@@ -1,0 +1,1468 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#0b0c0e; --card:#141518; --ink:#f2f4f7; --muted:#868d98;
+      --line:rgba(255,255,255,.08); --grid:rgba(255,255,255,.06);
+      --temp:#f0a54e; --hum:#5b8cff; --good:#3ecf8e; --warn:#e0a13a; --bad:#e5484d;
+      --sh-1: inset 0 1px 0 rgba(255,255,255,.04), 0 6px 16px rgba(0,0,0,.28);
+      --sh-2: inset 0 1px 0 rgba(255,255,255,.05), 0 12px 28px rgba(0,0,0,.36);
+    }
+    /* auto light (unless the user has explicitly picked a theme) */
+    @media (prefers-color-scheme: light){
+      :root:not([data-theme]){
+        --bg:#eef0f3; --card:#ffffff; --ink:#1b1f24; --muted:#40454c;
+        --line:rgba(0,0,0,.10); --grid:rgba(0,0,0,.07);
+        --temp:#d9822b; --hum:#3b6fe0; --good:#12a150; --warn:#b45309; --bad:#dc2626;
+        --sh-1: 0 1px 2px rgba(15,23,42,.05), 0 6px 16px rgba(15,23,42,.06);
+        --sh-2: 0 2px 4px rgba(15,23,42,.05), 0 14px 32px rgba(15,23,42,.09);
+      }
+    }
+    :root[data-theme="light"]{
+      --bg:#eef0f3; --card:#ffffff; --ink:#1b1f24; --muted:#40454c;
+      --line:rgba(0,0,0,.10); --grid:rgba(0,0,0,.07);
+      --temp:#d9822b; --hum:#3b6fe0; --good:#12a150; --warn:#b45309; --bad:#dc2626;
+      --sh-1: 0 1px 2px rgba(15,23,42,.05), 0 6px 16px rgba(15,23,42,.06);
+      --sh-2: 0 2px 4px rgba(15,23,42,.05), 0 14px 32px rgba(15,23,42,.09);
+    }
+    :root[data-theme="dark"]{
+      --bg:#0b0c0e; --card:#141518; --ink:#f2f4f7; --muted:#868d98;
+      --line:rgba(255,255,255,.08); --grid:rgba(255,255,255,.06);
+      --temp:#f0a54e; --hum:#5b8cff; --good:#3ecf8e; --warn:#e0a13a; --bad:#e5484d;
+      --sh-1: inset 0 1px 0 rgba(255,255,255,.04), 0 6px 16px rgba(0,0,0,.28);
+      --sh-2: inset 0 1px 0 rgba(255,255,255,.05), 0 12px 28px rgba(0,0,0,.36);
+    }
+    *{ box-sizing:border-box; }
+    body{ margin:0; background:var(--bg); color:var(--ink);
+          font-family:'Montserrat',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+          -webkit-font-smoothing:antialiased; }
+    header{ padding:26px 20px 14px; max-width:1080px; margin:0 auto; }
+    .brand{ display:flex; align-items:center; gap:13px; margin-bottom:20px; }
+    .logo{ width:44px; height:44px; flex:none; }
+    h1{ font-size:30px; font-weight:800; letter-spacing:-.02em; margin:0; line-height:1; }
+    .tagline{ color:var(--muted); font-size:14px; margin:4px 0 0; }
+    .row{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+    .spacer{ flex:1; }
+    button{ font:inherit; border:1px solid var(--line); background:transparent;
+            color:var(--ink); border-radius:9px; padding:7px 13px; cursor:pointer;
+            transition:.15s; }
+    button:hover{ border-color:rgba(255,255,255,.22); }
+    .seg{ display:flex; gap:0; }
+    .seg button{ border-radius:0; border-right:none; color:var(--muted); }
+    .seg button:first-child{ border-radius:9px 0 0 9px; }
+    .seg button:last-child{ border-radius:0 9px 9px 0; border-right:1px solid var(--line); }
+    .seg button.on{ color:var(--ink); background:rgba(255,255,255,.06); }
+    main{ padding:0 20px 40px; max-width:1080px; margin:0 auto; }
+    .banner{ background:rgba(229,72,77,.12); border:1px solid rgba(229,72,77,.35);
+             color:#ff9ea0; padding:10px 14px; border-radius:11px; margin-bottom:18px;
+             font-size:13.5px; display:none; }
+    .cardsWrap{ position:relative; margin-bottom:10px; }
+    .cards{ display:flex; gap:12px; overflow-x:auto; overflow-y:hidden;
+            padding:2px 1px 2px; scroll-snap-type:x proximity;
+            -webkit-overflow-scrolling:touch;
+            scrollbar-width:none; -ms-overflow-style:none; }
+    .cards::-webkit-scrollbar{ display:none; }
+    .card{ background:var(--card); border:1px solid var(--line); border-radius:14px;
+           padding:13px 15px; cursor:pointer; box-shadow:var(--sh-1);
+           flex:0 0 168px; scroll-snap-align:start;
+           transition:opacity .15s, border-color .15s, transform .12s ease; }
+    .cardNav{ position:absolute; top:50%; transform:translateY(-50%); width:30px; height:30px;
+              border-radius:50%; background:var(--card); border:1px solid var(--line);
+              box-shadow:var(--sh-1); display:flex; align-items:center; justify-content:center;
+              cursor:pointer; z-index:2; color:var(--ink); padding:0;
+              transition:opacity .15s ease, transform .15s ease; }
+    .cardNav:hover{ transform:translateY(-50%) scale(1.06); }
+    .cardNav.left{ left:-14px; }
+    .cardNav.right{ right:-14px; }
+    .cardNav.hide{ opacity:0; pointer-events:none; }
+    .cardNav.dimmed{ opacity:.3; pointer-events:none; }
+    .cardDots{ display:flex; justify-content:center; gap:6px; margin:0 0 22px; }
+    .cardDots.hide{ display:none; }
+    .cardDot{ width:6px; height:6px; border-radius:3px; background:var(--line);
+              cursor:pointer; transition:width .2s ease, background .2s ease; }
+    .cardDot.on{ width:16px; background:var(--muted); }
+    .card:active{ transform:scale(.97); }
+    .card.sel{ border-color:rgba(255,255,255,.28); }
+    .card.dim{ opacity:.45; }
+    .card .tval, .card .hval, .card .bval, .astat b{ font-variant-numeric:tabular-nums; }
+    .card .cardtop{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:11px; }
+    .card .name{ font-weight:600; font-size:12.5px; display:flex; align-items:center; gap:7px; min-width:0; }
+    .card .name .n{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .dot{ width:9px; height:9px; border-radius:50%; display:inline-block; flex:none; }
+    .dot.cpTrigger{ cursor:pointer; transition:transform .15s, box-shadow .15s; }
+    .dot.cpTrigger:hover{ transform:scale(1.45); box-shadow:0 0 0 2px var(--card),0 0 0 3.5px rgba(255,255,255,.35); }
+    .bchip{ display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600; flex:none; }
+    .bicon{ width:20px; height:10px; border:1.5px solid var(--muted); border-radius:2px; padding:1px; position:relative; }
+    .bicon::after{ content:''; position:absolute; right:-3px; top:2.5px; width:2px; height:3px; background:var(--muted); border-radius:0 1px 1px 0; }
+    .bicon > i{ display:block; height:100%; border-radius:1px; }
+    .card .temp{ font-size:31px; font-weight:700; letter-spacing:-.02em; line-height:1; }
+    .card .temp .u{ font-size:17px; font-weight:600; color:var(--muted); margin-left:1px; }
+    .card .hum{ font-size:15px; font-weight:600; color:var(--hum); margin-top:6px; }
+    .card .hum .u{ font-size:12px; }
+    .card .hum .hl{ color:var(--muted); font-weight:400; font-size:11px; margin-left:2px; }
+    .card .foot{ color:var(--muted); font-size:11.5px; margin-top:10px; }
+    .card .foot .on{ color:var(--good); }
+    .card .foot .offl{ color:var(--bad); font-weight:600; }
+    .chartbox{ background:var(--card); border:1px solid var(--line); border-radius:16px;
+               padding:16px 16px 10px; box-shadow:var(--sh-2); }
+    .chead{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+    .metrics{ display:flex; gap:8px; }
+    .chk{ display:inline-flex; align-items:center; gap:8px; cursor:pointer; user-select:none;
+          font-size:13.5px; color:var(--muted); border:1px solid var(--line);
+          padding:6px 11px 6px 9px; border-radius:20px; transition:.15s; }
+    .chk .box{ width:15px; height:15px; border-radius:50%; border:1.5px solid var(--muted);
+               display:inline-flex; align-items:center; justify-content:center; transition:.15s; }
+    .chk .box::after{ content:"✓"; font-size:11px; color:#0b0c0e; opacity:0; line-height:1; }
+    .chk[data-m="temp"].on{ color:var(--temp); border-color:rgba(240,165,78,.5); }
+    .chk[data-m="temp"].on .box{ background:var(--temp); border-color:var(--temp); }
+    .chk[data-m="hum"].on{ color:var(--hum); border-color:rgba(91,140,255,.5); }
+    .chk[data-m="hum"].on .box{ background:var(--hum); border-color:var(--hum); }
+    .chk.on .box::after{ opacity:1; }
+    .chead a{ color:var(--muted); font-size:12px; cursor:pointer; text-decoration:none; }
+    .chead a:hover{ color:var(--ink); }
+    .chartwrap{ position:relative; width:100%; height:clamp(240px,46vh,560px); }
+    .chartwrap canvas{ position:absolute; inset:0; width:100% !important; height:100% !important; }
+    .hint{ color:var(--muted); font-size:12px; text-align:center; padding:14px 6px 2px; }
+
+    /* card / analytics-card entrance */
+    @keyframes riseIn{ from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none} }
+    .card.enter, .acard.enter{ animation:riseIn .4s cubic-bezier(.2,.8,.2,1) both; }
+
+    /* skeleton loading placeholders (first load only) */
+    .card.skeleton{ cursor:default; }
+    .skel-line{ height:10px; border-radius:6px; margin:9px 0;
+                background:linear-gradient(90deg, var(--line) 25%, rgba(130,140,155,.22) 37%, var(--line) 63%);
+                background-size:400% 100%; animation:shimmer 1.4s ease infinite; }
+    .skel-line.big{ height:26px; margin:10px 0 8px; }
+    .skel-line.w60{ width:60%; } .skel-line.w50{ width:50%; }
+    .skel-line.w40{ width:40%; } .skel-line.w30{ width:30%; }
+    @keyframes shimmer{ 0%{ background-position:100% 0 } 100%{ background-position:0 0 } }
+
+    /* banner slide-in */
+    .banner{ opacity:0; transform:translateY(-6px);
+              transition:opacity .25s ease, transform .25s cubic-bezier(.2,.8,.2,1); }
+    .banner.show{ opacity:1; transform:translateY(0); }
+
+    /* refresh icon spin while a fetch is in flight */
+    @keyframes spin{ to{ transform:rotate(360deg) } }
+    .iconbtn.spinning{ animation:spin .7s linear infinite; }
+
+    /* reset-zoom link only appears once the chart is actually zoomed */
+    .chead a{ opacity:0; pointer-events:none; transition:opacity .15s ease; }
+    .chead a.show{ opacity:1; pointer-events:auto; }
+
+    /* theme icon crossfade */
+    .themeToggle{ transition:opacity .15s ease; }
+
+    /* views: absolute-positioned crossfade so neither view causes layout jump */
+    #views{ position:relative; }
+    .view{ display:none; opacity:0; transform:translateX(12px);
+           transition:opacity .22s cubic-bezier(.2,.8,.2,1), transform .22s cubic-bezier(.2,.8,.2,1); }
+    .view.active{ opacity:1; transform:translateX(0); position:relative; }
+    .view.leaving{ display:block; position:absolute; inset:0; opacity:0; transform:translateX(-12px); pointer-events:none; }
+
+    /* splash */
+    #splash{ position:fixed; inset:0; z-index:50; background:var(--bg);
+             display:flex; flex-direction:column; align-items:center; justify-content:center;
+             gap:20px; transition:opacity .5s ease; }
+    #splash.hide{ opacity:0; pointer-events:none; }
+    #splash .slogo{ width:98px; height:98px; animation:pop .7s cubic-bezier(.2,.8,.2,1) both; }
+    #splash .sline{ stroke-dasharray:48; stroke-dashoffset:48; animation:draw 1s .35s ease forwards; }
+    #splash .sword{ font-size:34px; font-weight:800; letter-spacing:-.02em;
+                    animation:fadeup .6s .55s both; }
+    @keyframes pop{ from{opacity:0; transform:scale(.82)} to{opacity:1; transform:scale(1)} }
+    @keyframes draw{ to{stroke-dashoffset:0} }
+    @keyframes fadeup{ from{opacity:0; transform:translateY(10px)} to{opacity:1; transform:none} }
+
+    /* home */
+    .home{ padding:0 20px 40px; max-width:1080px; margin:0 auto; }
+    .homehead{ display:flex; align-items:center; gap:12px; padding:34px 0 26px; }
+    .homehead .logo{ width:42px; height:42px; }
+    .homehead h1{ font-size:26px; font-weight:800; letter-spacing:-.02em; margin:0; }
+    .tiles{ display:grid; gap:14px; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); }
+    .tile{ display:flex; flex-direction:column; align-items:flex-start; gap:10px; text-align:left;
+           background:var(--card); border:1px solid var(--line); border-radius:18px; padding:22px;
+           color:var(--ink); cursor:pointer; transition:.16s; min-height:158px; box-shadow:var(--sh-1);
+           font-family:inherit; animation:fadeup .5s .1s both; }
+    .tile:hover{ border-color:rgba(255,255,255,.28); transform:translateY(-2px); }
+    .tile:active{ transform:translateY(0) scale(.98); }
+    .tile .ticon{ width:46px; height:46px; margin-bottom:auto; }
+    .tile .tname{ font-size:19px; font-weight:700; }
+    .tile .tsub{ color:var(--muted); font-size:13px; }
+    .tile.soon{ opacity:.5; cursor:default; }
+    .tile.soon:hover{ transform:none; border-color:var(--line); }
+
+    /* back */
+    .back{ display:inline-flex; align-items:center; gap:6px; color:var(--muted);
+           background:transparent; border:none; padding:0; margin-bottom:14px;
+           cursor:pointer; font:inherit; font-size:14px; }
+    .back:hover{ color:var(--ink); }
+
+    /* dashboard section header reads smaller than the app title */
+    #dash .brand .logo{ width:34px; height:34px; }
+    #dash .brand h1{ font-size:23px; }
+    .iconbtn{ display:inline-flex; align-items:center; justify-content:center;
+              padding:7px 9px; line-height:0; }
+    .updated{ color:var(--muted); font-size:12px; }
+
+    /* analytics */
+    .asection{ margin-top:22px; }
+    .atitle{ font-size:15px; font-weight:700; margin:0 2px 12px; }
+    .atitle .asub{ color:var(--muted); font-weight:400; font-size:12px; margin-left:6px; }
+    .analytics{ display:grid; gap:12px; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); }
+    .acard{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 16px;
+            box-shadow:var(--sh-1); }
+    .acard .aname{ font-weight:600; font-size:13px; display:flex; align-items:center; gap:7px; margin-bottom:12px; }
+    .arow{ display:flex; align-items:center; gap:8px; margin:9px 0; }
+    .arow .alabel{ font-size:12px; color:var(--muted); width:120px; flex:none; }
+    .astat{ flex:1; text-align:center; }
+    .astat b{ display:block; font-size:15px; font-weight:700; line-height:1.2; }
+    .astat i{ display:block; font-size:9.5px; color:var(--muted); font-style:normal;
+              text-transform:uppercase; letter-spacing:.05em; margin-top:1px; }
+
+    /* export modal */
+    .modalOverlay{ display:none; position:fixed; inset:0; z-index:60;
+                   background:rgba(0,0,0,.45); align-items:center; justify-content:center;
+                   padding:20px; opacity:0; transition:opacity .18s ease; }
+    .modalOverlay.show{ display:flex; opacity:1; }
+    .modal{ background:var(--card); border-radius:18px; padding:24px; width:100%; max-width:340px;
+            box-shadow:var(--sh-2); transform:scale(.94) translateY(6px); opacity:0;
+            transition:transform .2s cubic-bezier(.2,.8,.2,1), opacity .2s ease; }
+    .modalOverlay.show .modal{ transform:scale(1) translateY(0); opacity:1; }
+    .modal h2{ font-size:18px; font-weight:800; margin:0 0 4px; letter-spacing:-.01em; }
+    .modal .msub{ color:var(--muted); font-size:12.5px; margin:0 0 16px; }
+    .mfield{ display:block; font-size:12px; color:var(--muted); font-weight:600;
+             margin-bottom:12px; }
+    .mfield input{ display:block; width:100%; margin-top:6px; font:inherit; font-size:14px;
+                   color:var(--ink); background:var(--bg); border:1px solid var(--line);
+                   border-radius:9px; padding:9px 10px; }
+    .merr{ color:var(--bad); font-size:12px; margin:2px 0 4px; display:none; }
+    .merr.show{ display:block; }
+    .mrow{ display:flex; gap:10px; margin-top:14px; }
+    .mbtn{ flex:1; font:inherit; font-weight:600; font-size:13.5px; border-radius:10px;
+           padding:10px; cursor:pointer; transition:.15s; }
+    .mbtn.ghost{ background:transparent; border:1px solid var(--line); color:var(--ink); }
+    .mbtn.ghost:hover{ border-color:rgba(128,128,128,.4); }
+    .mbtn.primary{ background:var(--hum); border:1px solid var(--hum); color:#fff; }
+    .mbtn.primary:hover{ opacity:.9; }
+    .mbtn.primary:disabled{ opacity:.6; cursor:default; }
+
+    /* compare screen pod chips */
+    .cmpSectionLabel{ font-size:12px; font-weight:600; color:var(--muted);
+                      text-transform:uppercase; letter-spacing:.06em; margin:0 0 10px; }
+    .podChips{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:4px; }
+    .podChip{ display:inline-flex; align-items:center; gap:7px; font:inherit; font-size:13px;
+              font-weight:600; padding:7px 14px; border-radius:20px; cursor:pointer;
+              background:var(--card); border:1px solid var(--line); color:var(--muted);
+              box-shadow:var(--sh-1); transition:.15s; }
+    .podChip:hover{ border-color:rgba(128,128,128,.35); color:var(--ink); }
+    .podChip.on{ color:var(--ink); border-color:rgba(255,255,255,.28); background:var(--card); }
+    .podChip .chipDot{ width:8px; height:8px; border-radius:50%; flex:none; }
+
+    /* compare feature */
+    .cheadRight{ display:flex; align-items:center; gap:10px; }
+    .cmpBtn{ font:inherit; font-size:12px; color:var(--muted); background:transparent;
+             border:1px solid var(--line); border-radius:20px; padding:5px 12px;
+             cursor:pointer; transition:.15s; white-space:nowrap; }
+    .cmpBtn:hover{ color:var(--ink); border-color:rgba(128,128,128,.35); }
+    .cmpBtn.on{ background:rgba(91,140,255,.12); color:var(--hum); border-color:rgba(91,140,255,.45); }
+    .compareBar{ display:flex; flex-wrap:wrap; align-items:center; gap:7px;
+                 padding:10px 0 12px; border-bottom:1px solid var(--line);
+                 margin-bottom:8px; animation:riseIn .22s ease both; }
+    .compareBar.hide{ display:none; }
+    .cblabel{ font-size:11.5px; color:var(--muted); font-weight:600; flex:none; margin-right:2px; }
+    .cbopt{ font:inherit; font-size:12px; color:var(--muted); background:transparent;
+            border:1px solid var(--line); border-radius:16px; padding:5px 12px;
+            cursor:pointer; transition:.15s; }
+    .cbopt:hover{ color:var(--ink); border-color:rgba(128,128,128,.35); }
+    .cbopt.on{ background:rgba(91,140,255,.14); border-color:rgba(91,140,255,.5);
+               color:var(--hum); font-weight:600; }
+    .cbcustom{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:2px; }
+    .cbcustom.hide{ display:none; }
+    .cbcustom input{ font:inherit; font-size:12px; color:var(--ink); background:var(--bg);
+                     border:1px solid var(--line); border-radius:8px; padding:5px 9px; cursor:pointer; }
+    .cbcustom .cbApply{ font:inherit; font-size:12px; color:#fff; background:var(--hum);
+                        border:1px solid var(--hum); border-radius:8px; padding:5px 12px;
+                        cursor:pointer; transition:.15s; }
+    .cbcustom .cbApply:hover{ opacity:.85; }
+    .cbclear{ font:inherit; font-size:17px; line-height:1; color:var(--muted); background:transparent;
+              border:none; padding:2px 5px; cursor:pointer; margin-left:auto; }
+    .cbclear:hover{ color:var(--ink); }
+    .cmpBadge{ font-size:11px; color:var(--muted); padding:2px 0; }
+    .cmpBadge .cmpNow{ color:var(--ink); font-weight:600; }
+    .cmpBadge .cmpVs{ font-style:italic; }
+  </style>
+</head>
+<body>
+  <div id="splash">
+    <svg class="slogo" viewBox="0 0 64 64" role="img" aria-label="Dewvee">
+      <defs>
+        <linearGradient id="sg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f0a54e"/><stop offset="1" stop-color="#5b8cff"/></linearGradient>
+        <clipPath id="sk"><path d="M32 6 C32 6 16 30 16 42 A16 16 0 1 0 48 42 C48 30 32 6 32 6 Z"/></clipPath>
+      </defs>
+      <path d="M32 6 C32 6 16 30 16 42 A16 16 0 1 0 48 42 C48 30 32 6 32 6 Z" fill="url(#sg)"/>
+      <g clip-path="url(#sk)"><path class="sline" d="M17 42 L24 36 L30 40 L37 30 L44 35 L50 28" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></g>
+    </svg>
+    <div class="sword">Dewvee</div>
+  </div>
+
+  <div id="views">
+  <div id="home" class="view home">
+    <div class="homehead">
+      <svg class="logo" viewBox="0 0 64 64" role="img" aria-label="Dewvee">
+        <defs>
+          <linearGradient id="hg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f0a54e"/><stop offset="1" stop-color="#5b8cff"/></linearGradient>
+          <clipPath id="hk"><path d="M32 6 C32 6 16 30 16 42 A16 16 0 1 0 48 42 C48 30 32 6 32 6 Z"/></clipPath>
+        </defs>
+        <path d="M32 6 C32 6 16 30 16 42 A16 16 0 1 0 48 42 C48 30 32 6 32 6 Z" fill="url(#hg)"/>
+        <g clip-path="url(#hk)"><path d="M17 42 L24 36 L30 40 L37 30 L44 35 L50 28" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></g>
+      </svg>
+      <h1>Dewvee</h1>
+      <span class="spacer"></span>
+      <button class="iconbtn themeToggle" aria-label="Toggle light/dark theme"></button>
+    </div>
+    <div class="tiles">
+      <button class="tile" id="tilePods">
+        <svg class="ticon" viewBox="0 0 64 64" role="img" aria-label="Dewvees">
+          <defs>
+            <linearGradient id="tg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f0a54e"/><stop offset="1" stop-color="#5b8cff"/></linearGradient>
+            <clipPath id="tk"><path d="M32 6 C32 6 16 30 16 42 A16 16 0 1 0 48 42 C48 30 32 6 32 6 Z"/></clipPath>
+          </defs>
+          <path d="M32 6 C32 6 16 30 16 42 A16 16 0 1 0 48 42 C48 30 32 6 32 6 Z" fill="url(#tg)"/>
+          <g clip-path="url(#tk)"><path d="M17 42 L24 36 L30 40 L37 30 L44 35 L50 28" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></g>
+        </svg>
+        <div class="tname">Dewvees</div>
+        <div class="tsub">Live temperature &amp; relative humidity</div>
+      </button>
+      <button class="tile" id="tileCompare">
+        <svg class="ticon" viewBox="0 0 46 46" fill="none" aria-hidden="true">
+          <defs>
+            <linearGradient id="cmpG1" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#f0a54e"/><stop offset="1" stop-color="#e0842a"/></linearGradient>
+            <linearGradient id="cmpG2" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#5b8cff"/><stop offset="1" stop-color="#0ea5e9"/></linearGradient>
+          </defs>
+          <polyline points="4,34 13,22 20,28 30,12 42,18" stroke="url(#cmpG1)" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline points="4,38 13,30 20,34 30,22 42,26" stroke="url(#cmpG2)" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="5 4"/>
+        </svg>
+        <div class="tname">Compare</div>
+        <div class="tsub">Overlay periods &amp; Dewvees side by side</div>
+      </button>
+      <button class="tile soon">
+        <svg class="ticon" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="3"/>
+          <line x1="12" y1="3" x2="12" y2="6.3"/>
+          <line x1="12" y1="17.7" x2="12" y2="21"/>
+          <line x1="3" y1="12" x2="6.3" y2="12"/>
+          <line x1="17.7" y1="12" x2="21" y2="12"/>
+          <line x1="5.8" y1="5.8" x2="8.1" y2="8.1"/>
+          <line x1="15.9" y1="15.9" x2="18.2" y2="18.2"/>
+          <line x1="5.8" y1="18.2" x2="8.1" y2="15.9"/>
+          <line x1="15.9" y1="8.1" x2="18.2" y2="5.8"/>
+        </svg>
+        <div class="tname">Configure</div>
+        <div class="tsub">Rename &amp; configure Dewvees · soon</div>
+      </button>
+    </div>
+  </div>
+
+  <div id="dash" class="view">
+  <header>
+    <button class="back" id="backHome" aria-label="Back to home">‹ Home</button>
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 64 64" role="img" aria-label="Dewvee">
+        <defs>
+          <linearGradient id="brandg" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#f0a54e"/><stop offset="1" stop-color="#5b8cff"/>
+          </linearGradient>
+          <clipPath id="brandc"><path d="M32 6 C32 6 16 30 16 42 A16 16 0 1 0 48 42 C48 30 32 6 32 6 Z"/></clipPath>
+        </defs>
+        <path d="M32 6 C32 6 16 30 16 42 A16 16 0 1 0 48 42 C48 30 32 6 32 6 Z" fill="url(#brandg)"/>
+        <g clip-path="url(#brandc)"><path d="M17 42 L24 36 L30 40 L37 30 L44 35 L50 28" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></g>
+      </svg>
+      <div>
+        <h1>Dewvees</h1>
+      </div>
+    </div>
+    <div class="row">
+      <div class="seg" id="ranges">
+        <button data-r="day">Day</button>
+        <button data-r="week">Week</button>
+        <button data-r="month">Month</button>
+        <button data-r="year">Year</button>
+        <button data-r="all">All</button>
+      </div>
+      <span class="spacer"></span>
+      <span class="updated" id="updated"></span>
+      <button class="iconbtn" id="exportBtn" aria-label="Export CSV">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 19h16"/></svg>
+      </button>
+      <button class="iconbtn themeToggle" aria-label="Toggle light/dark theme"></button>
+      <button class="iconbtn" id="refresh" aria-label="Refresh">↻</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="banner" id="banner"></div>
+    <div class="cardsWrap">
+      <button class="cardNav left hide" id="cardsPrev" aria-label="Previous Dewvees">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <div class="cards" id="cards"></div>
+      <button class="cardNav right hide" id="cardsNext" aria-label="Next Dewvees">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+    </div>
+    <div class="cardDots hide" id="cardDots"></div>
+
+    <div class="chartbox">
+      <div class="chead">
+        <div class="metrics" id="metrics">
+          <label class="chk on" data-m="temp"><span class="box"></span>Temperature</label>
+          <label class="chk on" data-m="hum"><span class="box"></span>Relative Humidity</label>
+        </div>
+        <a id="resetZoom">reset zoom</a>
+      </div>
+      <div class="chartwrap"><canvas id="chart"></canvas></div>
+    </div>
+    <div class="hint">Tap a Dewvee to add/remove it • pinch to zoom • drag to pan</div>
+
+    <div class="asection">
+      <div class="atitle">Analytics<span class="asub" id="arange"></span></div>
+      <div class="analytics" id="analytics"></div>
+    </div>
+  </main>
+  </div>
+
+  <!-- ═══════════════ COMPARE VIEW ═══════════════ -->
+  <div id="compare" class="view">
+  <header>
+    <button class="back" id="backFromCompare">‹ Home</button>
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 64 64" role="img" aria-label="Dewvee">
+        <defs>
+          <linearGradient id="cmpBrandG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f0a54e"/><stop offset="1" stop-color="#5b8cff"/></linearGradient>
+          <clipPath id="cmpBrandC"><path d="M32 6 C32 6 16 30 16 42 A16 16 0 1 0 48 42 C48 30 32 6 32 6 Z"/></clipPath>
+        </defs>
+        <path d="M32 6 C32 6 16 30 16 42 A16 16 0 1 0 48 42 C48 30 32 6 32 6 Z" fill="url(#cmpBrandG)"/>
+        <g clip-path="url(#cmpBrandC)"><path d="M17 42 L24 36 L30 40 L37 30 L44 35 L50 28" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></g>
+      </svg>
+      <div><h1>Compare</h1></div>
+    </div>
+    <div class="row">
+      <div class="seg" id="cmpRanges">
+        <button data-r="6h">6h</button>
+        <button data-r="12h">12h</button>
+        <button data-r="day" class="on">Day</button>
+        <button data-r="week">Week</button>
+        <button data-r="month">Month</button>
+        <button data-r="year">Year</button>
+      </div>
+      <span class="spacer"></span>
+      <button class="iconbtn themeToggle" aria-label="Toggle light/dark theme"></button>
+    </div>
+  </header>
+  <main>
+    <p class="cmpSectionLabel">Dewvees</p>
+    <div class="podChips" id="cmpChips"></div>
+
+    <div class="chartbox" style="margin-top:16px">
+      <div class="compareBar" id="cmpBar" style="animation:none;border-top:none;padding-top:0">
+        <span class="cblabel">Compare with:</span>
+        <button class="cbopt" data-coff="1"></button>
+        <button class="cbopt" data-coff="2"></button>
+        <button class="cbopt" data-coff="3"></button>
+        <button class="cbopt" data-coff="0">Custom range</button>
+        <div class="cbcustom hide" id="cmpCustom">
+          <input type="datetime-local" id="cmpFrom">
+          <span style="color:var(--muted);font-size:13px">→</span>
+          <input type="datetime-local" id="cmpTo">
+          <button class="cbApply" id="cmpApply">Apply</button>
+        </div>
+      </div>
+      <div class="chead" style="margin-top:10px">
+        <div class="metrics" id="cmpMetrics">
+          <label class="chk on" data-m="temp"><span class="box"></span>Temperature</label>
+          <label class="chk on" data-m="hum"><span class="box"></span>Relative Humidity</label>
+        </div>
+        <a id="cmpResetZoom" style="color:var(--muted);font-size:12px;cursor:pointer;text-decoration:none;opacity:0;pointer-events:none;transition:opacity .15s ease">reset zoom</a>
+      </div>
+      <div class="chartwrap"><canvas id="cmpChart"></canvas></div>
+      <div class="cmpBadge hide" id="cmpBadge" style="font-size:11px;color:var(--muted);padding:6px 2px 2px"></div>
+    </div>
+    <div class="hint">Select Dewvees above · pinch to zoom · drag to pan</div>
+  </main>
+  </div>
+  </div>
+
+  <div class="modalOverlay" id="exportOverlay">
+    <div class="modal">
+      <h2>Export CSV</h2>
+      <p class="msub" id="exportWho"></p>
+      <label class="mfield">From
+        <input type="date" id="exportFrom">
+      </label>
+      <label class="mfield">To
+        <input type="date" id="exportTo">
+      </label>
+      <p class="merr" id="exportErr"></p>
+      <div class="mrow">
+        <button class="mbtn ghost" id="exportCancel">Cancel</button>
+        <button class="mbtn primary" id="exportGo">Export</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // use Montserrat for all chart text (axis ticks, legend, tooltips)
+    if (window.Chart) Chart.defaults.font.family = "'Montserrat', system-ui, sans-serif";
+
+    // set the Dewvee drop as the browser-tab favicon (encoded at runtime)
+    (function(){
+      var svg='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">'+
+        '<defs><linearGradient id="f" x1="0" y1="0" x2="0" y2="1">'+
+        '<stop offset="0" stop-color="#f0a54e"/><stop offset="1" stop-color="#5b8cff"/></linearGradient>'+
+        '<clipPath id="k"><path d="M32 6 C32 6 16 30 16 42 A16 16 0 1 0 48 42 C48 30 32 6 32 6 Z"/></clipPath></defs>'+
+        '<path d="M32 6 C32 6 16 30 16 42 A16 16 0 1 0 48 42 C48 30 32 6 32 6 Z" fill="url(#f)"/>'+
+        '<g clip-path="url(#k)"><path d="M17 42 L24 36 L30 40 L37 30 L44 35 L50 28" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></g></svg>';
+      var l=document.createElement('link');
+      l.rel='icon'; l.type='image/svg+xml';
+      l.href='data:image/svg+xml,'+encodeURIComponent(svg);
+      document.head.appendChild(l);
+    })();
+
+    // colors chosen to stay legible on BOTH the dark and light backgrounds
+    var PALETTE = ['#8b5cf6','#5b8cff','#2bb673','#e0842a','#e5484d',
+                   '#0ea5e9','#d6459b','#7c9c1f','#f2711c','#64748b'];
+    var colorOf = {};
+    function color(dev){
+      try{ var cs=JSON.parse(localStorage.getItem('dewvee_colors')||'{}'); if(cs[dev]){ colorOf[dev]=cs[dev]; return cs[dev]; } }catch(e){}
+      if(!(dev in colorOf)) colorOf[dev]=PALETTE[Object.keys(colorOf).length % PALETTE.length];
+      return colorOf[dev];
+    }
+    function setColor(dev, hex){
+      colorOf[dev]=hex;
+      try{ var cs={}; try{cs=JSON.parse(localStorage.getItem('dewvee_colors')||'{}');}catch(e){} cs[dev]=hex; localStorage.setItem('dewvee_colors',JSON.stringify(cs)); }catch(e){}
+    }
+    function hexToRgba(hex,a){
+      hex=hex.replace('#','');
+      if(hex.length===3) hex=hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
+      return 'rgba('+parseInt(hex.slice(0,2),16)+','+parseInt(hex.slice(2,4),16)+','+parseInt(hex.slice(4,6),16)+','+a+')';
+    }
+    function onPodColorChange(dev, hex){
+      setColor(dev, hex);
+      var el=cardEls[dev];
+      if(el){ var d=el.querySelector('.dot.cpTrigger'); if(d) d.style.background=hex; }
+      document.querySelectorAll('.adot[data-dev]').forEach(function(d){ if(d.getAttribute('data-dev')===dev) d.style.background=hex; });
+      if(chart){
+        chart.data.datasets.forEach(function(ds){
+          if(ds._podDev!==dev) return;
+          var col=ds._isCmp
+            ? (ds._isHum?hexToRgba(hex,.32):hexToRgba(hex,.48))
+            : (ds._isHum?hexToRgba(hex,.65):hex);
+          ds.borderColor=col; ds.pointBorderColor=col; ds._podColor=hex;
+        });
+        chart.update();
+      }
+    }
+
+    var state = { range:'day', selected:new Set(), devices:[], metrics:{temp:true, hum:true} };
+    var chart;
+
+    // ---- compare helpers ----
+    var PERIOD_MS = { '6h':6*3600e3, '12h':12*3600e3, day:86400e3, week:7*86400e3, month:30*86400e3, year:365*86400e3 };
+    function periodMs(r){ return PERIOD_MS[r] || 86400e3; }
+    function fmtRel(offsetMs, range){
+      var h=Math.floor(offsetMs/3600e3), m=Math.floor((offsetMs%3600e3)/60e3), d=Math.floor(offsetMs/86400e3);
+      if(range==='6h'||range==='12h') return h+'h'+(m?m+'m':'');
+      if(range==='day') return h+'h';
+      if(range==='week'){ return ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][d%7]; }
+      if(range==='month') return 'D'+(d+1);
+      if(range==='year'){ return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Math.min(Math.floor(d/30.4),11)]; }
+      return d+'d';
+    }
+    function cmpPeriodLabel(fromMs, range){
+      var d=new Date(fromMs), t=new Date(fromMs+periodMs(range)-1);
+      var tf=function(x){ return x.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:false}); };
+      var df=function(x){ return x.toLocaleDateString([],{month:'short',day:'numeric'}); };
+      if(range==='6h'||range==='12h') return df(d)+', '+tf(d)+'–'+tf(t);
+      if(range==='day') return df(d);
+      if(range==='week') return df(d)+'–'+df(t);
+      if(range==='month') return d.toLocaleDateString([],{month:'short',year:'numeric'});
+      if(range==='year') return String(d.getFullYear());
+      return df(d);
+    }
+    function cmpOffsetLabel(offset, range){
+      var pMs=periodMs(range), now=Date.now();
+      var to=now-offset*pMs, from=now-(offset+1)*pMs;
+      var fD=new Date(from), tD=new Date(to-1);
+      var loc=[], shm={month:'short',day:'numeric'};
+      if(range==='6h'||range==='12h'){
+        var tf=function(d){ return d.toLocaleTimeString(loc,{hour:'2-digit',minute:'2-digit',hour12:false}); };
+        var df=function(d){ return d.toLocaleDateString(loc,shm); };
+        return fD.toDateString()===tD.toDateString()
+          ? df(fD)+', '+tf(fD)+'–'+tf(tD)
+          : df(fD)+' '+tf(fD)+'–'+df(tD)+' '+tf(tD);
+      }
+      if(range==='day'){
+        var yest=new Date(); yest.setDate(yest.getDate()-1);
+        if(fD.toDateString()===yest.toDateString()) return 'Yesterday';
+        return fD.toLocaleDateString(loc,shm);
+      }
+      if(range==='week')  return fD.toLocaleDateString(loc,shm)+'–'+tD.toLocaleDateString(loc,shm);
+      if(range==='month') return fD.toLocaleDateString(loc,{month:'long'});
+      if(range==='year')  return String(fD.getFullYear());
+      return fD.toLocaleDateString(loc,shm);
+    }
+    function refreshCmpBarLabels(){
+      document.querySelectorAll('#cmpBar .cbopt[data-coff]').forEach(function(btn){
+        var off=parseInt(btn.getAttribute('data-coff'));
+        if(off>0) btn.textContent=cmpOffsetLabel(off, cmpViewState.range);
+      });
+    }
+    function computeCompareWindow(offset){
+      var pMs=periodMs(state.range), now=Date.now();
+      var to=now-(offset-1)*pMs, from=to-pMs;
+      return {from:from, to:to};
+    }
+
+    // ---- theme (dark default, auto light, manual override persisted) ----
+    function isLight(){
+      var t=document.documentElement.getAttribute('data-theme');
+      if(t) return t==='light';
+      return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches);
+    }
+    function themeColors(){
+      return isLight()
+        ? { tick:'#5b626c', grid:'rgba(0,0,0,.08)', legend:'#3b4046', point:'#ffffff' }
+        : { tick:'#868d98', grid:'rgba(255,255,255,.07)', legend:'#aeb4bd', point:'#0b0c0e' };
+    }
+
+    // Your deployed Apps Script /exec URL - used only as a fallback when this
+    // page is NOT being served by Apps Script (e.g. opened as a local file or
+    // hosted elsewhere). When served from /exec, google.script.run is used and
+    // this URL is ignored.
+    var API_URL="https://script.google.com/macros/s/AKfycbw88DpkYijK98qTzhlSguLAFxFRQI_H3KXreYcRp2sitSr3XWFPRz9QwR88ocdsRsO7/exec";
+
+    var HOSTED = !!(window.google && google.script && google.script.run);
+
+    function gcall(fn){
+      var args=[].slice.call(arguments,1);
+      if(HOSTED){
+        return new Promise(function(res,rej){
+          var r=google.script.run.withSuccessHandler(res).withFailureHandler(rej);
+          r[fn].apply(r,args);
+        });
+      }
+      // standalone: hit the JSON endpoints over the web instead
+      var url;
+      if(fn==='getDevices') url=API_URL+'?action=devices';
+      else if(fn==='getReadings'){
+        var p=args[0]||{};
+        url=API_URL+'?action=data&range='+encodeURIComponent(p.range||'day')+
+            (p.devices?'&devices='+encodeURIComponent(p.devices):'');
+      } else if(fn==='getReadingsRange'){
+        var pr=args[0]||{};
+        url=API_URL+'?action=export&from='+encodeURIComponent(pr.from)+'&to='+encodeURIComponent(pr.to)+
+            (pr.devices?'&devices='+encodeURIComponent(pr.devices):'');
+      } else if(fn==='getReadingsCompare'){
+        var pc=args[0]||{};
+        url=API_URL+'?action=compare&from='+encodeURIComponent(pc.from)+'&to='+encodeURIComponent(pc.to)+
+            (pc.devices?'&devices='+encodeURIComponent(pc.devices):'');
+      } else return Promise.reject(new Error('unknown call '+fn));
+      return fetch(url,{redirect:'follow'}).then(function(r){
+        if(!r.ok) throw new Error('HTTP '+r.status);
+        return r.json();
+      });
+    }
+    function battColor(p){ return p<=20?'var(--bad)':p<=40?'var(--warn)':'var(--good)'; }
+    function ago(ms){
+      var s=Math.round(ms/1000);
+      if(s<90) return s+'s ago';
+      var m=Math.round(s/60); if(m<90) return m+'m ago';
+      var h=Math.round(m/60); if(h<48) return h+'h ago';
+      return Math.round(h/24)+'d ago';
+    }
+    function fmtTime(ms){
+      var d=new Date(ms), r=state.range;
+      var opt = (r==='day')  ? {hour:'2-digit',minute:'2-digit'} :
+                (r==='week') ? {weekday:'short',hour:'2-digit'} :
+                (r==='month')? {month:'short',day:'numeric'} :
+                               {month:'short',year:'2-digit'};
+      return d.toLocaleString([],opt);
+    }
+
+    // Animates a number span from its previous value to a new one (count
+    // up/down). The current value is cached on the element itself so
+    // repeated calls always animate from wherever it last landed, not from
+    // scratch. First-ever render (no cached value yet) just snaps - only
+    // real CHANGES animate, so a steady reading never flickers.
+    function animateValue(el, to, decimals){
+      if(!el) return;
+      var from = parseFloat(el.getAttribute('data-val'));
+      el.setAttribute('data-val', to);
+      if(isNaN(from) || from===to){ el.textContent=to.toFixed(decimals); return; }
+      var start=null, dur=550;
+      function tick(ts){
+        if(start===null) start=ts;
+        var p=Math.min(1,(ts-start)/dur);
+        var eased=1-Math.pow(1-p,4);          // easeOutQuart
+        el.textContent=(from+(to-from)*eased).toFixed(decimals);
+        if(p<1) requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+    }
+
+    // slide-in/out banner instead of a blunt display toggle
+    function setBanner(msg){
+      var b=document.getElementById('banner');
+      if(msg){
+        b.textContent=msg;
+        if(b.style.display!=='block'){ b.style.display='block'; requestAnimationFrame(function(){ b.classList.add('show'); }); }
+        else b.classList.add('show');
+      } else if(b.classList.contains('show')){
+        b.classList.remove('show');
+        setTimeout(function(){ if(!b.classList.contains('show')) b.style.display='none'; }, 260);
+      }
+    }
+
+    function showSkeletonCards(n){
+      var host=document.getElementById('cards'); host.innerHTML='';
+      for(var i=0;i<(n||3);i++){
+        var s=document.createElement('div');
+        s.className='card skeleton';
+        s.innerHTML='<div class="skel-line w60"></div><div class="skel-line big w40"></div>'+
+                     '<div class="skel-line w30"></div><div class="skel-line w50"></div>';
+        host.appendChild(s);
+      }
+    }
+
+    // device -> its live card element, so refreshes UPDATE existing DOM
+    // nodes in place (count-up numbers, no lost hover/selection state)
+    // instead of tearing everything down and rebuilding it every 5 minutes.
+    var cardEls = {};
+
+    function cardInnerHTML(d){
+      return '<div class="cardtop">'+
+          '<span class="name"><span class="dot cpTrigger" title="Change color" style="background:'+color(d.device)+'"></span><span class="n">'+d.device+'</span></span>'+
+          '<span class="bchip">'+
+            '<span class="bicon"><i class="bfill"></i></span>'+
+            '<span class="bwrap"><span class="bval">0</span>%</span>'+
+          '</span>'+
+        '</div>'+
+        '<div class="temp"><span class="tval">0</span><span class="u">°</span></div>'+
+        '<div class="hum"><span class="hval">0</span><span class="u">%</span><span class="hl">RH</span></div>'+
+        '<div class="foot"><span class="stat"></span> · <span class="ago"></span></div>';
+    }
+    function applyCard(el, d, animate){
+      el.classList.toggle('sel', state.selected.has(d.device));
+      el.classList.toggle('dim', !state.selected.has(d.device));
+      var tval=el.querySelector('.tval'), hval=el.querySelector('.hval'), bval=el.querySelector('.bval');
+      if(animate){ animateValue(tval,d.temp,1); animateValue(hval,d.hum,0); animateValue(bval,d.pct,0); }
+      else {
+        tval.textContent=d.temp.toFixed(1); tval.setAttribute('data-val',d.temp);
+        hval.textContent=d.hum.toFixed(0);  hval.setAttribute('data-val',d.hum);
+        bval.textContent=d.pct;             bval.setAttribute('data-val',d.pct);
+      }
+      el.querySelector('.bfill').style.cssText='width:'+Math.max(8,d.pct)+'%;background:'+battColor(d.pct);
+      el.querySelector('.bwrap').style.color=battColor(d.pct);
+      el.querySelector('.bchip').title='Battery '+d.volt.toFixed(2)+' V';
+      el.querySelector('.stat').innerHTML=d.online?'<span class="on">online</span>':'<span class="offl">offline</span>';
+      el.querySelector('.ago').textContent=ago(d.ageMs);
+    }
+
+    var CLIENT_OFFLINE_MS = 12 * 60 * 60 * 1000;
+    async function loadDevices(){
+      var info=await gcall('getDevices');
+      // always compute online/offline from the sheet's last-seen age (12h threshold)
+      info.devices.forEach(function(d){ d.online = d.ageMs < CLIENT_OFFLINE_MS; });
+      // online pods first (stable sort keeps the server's alphabetical order
+      // within each group, so it doesn't jitter around on every refresh)
+      info.devices.sort(function(a,b){ return (b.online?1:0)-(a.online?1:0); });
+      state.devices=info.devices;
+      if(state.selected.size===0) info.devices.forEach(function(d){ state.selected.add(d.device); });
+
+      var low=info.devices.filter(function(d){return d.lowBatt;});
+      var off=info.devices.filter(function(d){return !d.online;});
+      var msgs=[];
+      if(low.length) msgs.push('🔋 Low battery: '+low.map(function(d){return d.device+' ('+d.pct+'%)';}).join(', '));
+      if(off.length) msgs.push('📴 Offline: '+off.map(function(d){return d.device;}).join(', '));
+      setBanner(msgs.length?msgs.join('    •    '):null);
+
+      var host=document.getElementById('cards');
+      // clear any skeleton placeholders left over from the first-load state -
+      // they live outside cardEls, so nothing else ever removes them
+      host.querySelectorAll('.card.skeleton').forEach(function(el){ el.remove(); });
+      if(info.devices.length===0){
+        host.innerHTML='<div style="color:var(--muted);font-size:14px;padding:10px 2px">'+
+          'No Dewvees have reported to the Sheet yet — they\'ll appear here after the first upload.</div>';
+        cardEls={};
+        document.getElementById('cardsPrev').classList.add('hide');
+        document.getElementById('cardsNext').classList.add('hide');
+        document.getElementById('cardDots').classList.add('hide');
+        return;
+      }
+      var seen={};
+      info.devices.forEach(function(d, idx){
+        seen[d.device]=true;
+        var el=cardEls[d.device];
+        if(!el){
+          el=document.createElement('div');
+          el.className='card enter dim';
+          el.style.animationDelay=(idx*40)+'ms';
+          el.innerHTML=cardInnerHTML(d);
+          el.style.position='relative';
+          // hidden color-picker input — dot click opens it without triggering card selection
+          (function(dev,elRef){
+            var dotEl=elRef.querySelector('.dot.cpTrigger');
+            var cpEl=document.createElement('input');
+            cpEl.type='color'; cpEl.value=color(dev);
+            cpEl.style.cssText='position:absolute;width:0;height:0;opacity:0;pointer-events:none';
+            cpEl.addEventListener('input',function(e){ e.stopPropagation(); onPodColorChange(dev,cpEl.value); });
+            dotEl.addEventListener('click',function(e){ e.stopPropagation(); cpEl.value=color(dev); cpEl.click(); });
+            elRef.appendChild(cpEl);
+          })(d.device, el);
+          el.addEventListener('animationend', function(){ el.classList.remove('enter'); }, {once:true});
+          el.onclick=function(){
+            if(state.selected.has(d.device)) state.selected.delete(d.device);
+            else state.selected.add(d.device);
+            el.classList.toggle('sel', state.selected.has(d.device));
+            el.classList.toggle('dim', !state.selected.has(d.device));
+            loadData();
+          };
+          cardEls[d.device]=el;
+          applyCard(el, d, false);   // first paint: snap, don't count up from 0
+        } else {
+          applyCard(el, d, true);    // refresh: animate the change
+        }
+        // appendChild on an already-attached node MOVES it - this keeps DOM
+        // order in sync with the online-first sort even when a pod's status
+        // flips between refreshes, not just on first render.
+        host.appendChild(el);
+      });
+      Object.keys(cardEls).forEach(function(dev){
+        if(!seen[dev]){ cardEls[dev].remove(); delete cardEls[dev]; }
+      });
+      requestAnimationFrame(buildCardsNav);   // wait a frame so layout/scrollWidth is settled
+    }
+
+    // ---- Dewvee carousel: overlay arrows + position dots, no raw scrollbar ----
+    function cardOrder(){
+      var host=document.getElementById('cards');
+      return Array.from(host.children).filter(function(c){ return c.classList.contains('card'); });
+    }
+    function buildCardsNav(){
+      var host=document.getElementById('cards');
+      var prev=document.getElementById('cardsPrev'), next=document.getElementById('cardsNext');
+      var dotsHost=document.getElementById('cardDots');
+      if(!host) return;
+      var order=cardOrder();
+      var scrollable = host.scrollWidth > host.clientWidth + 4;
+      prev.classList.toggle('hide', !scrollable);
+      next.classList.toggle('hide', !scrollable);
+      dotsHost.classList.toggle('hide', !scrollable || order.length<2);
+      dotsHost.innerHTML='';
+      if(scrollable && order.length>1){
+        order.forEach(function(card){
+          var dot=document.createElement('span');
+          dot.className='cardDot';
+          dot.onclick=function(){ card.scrollIntoView({behavior:'smooth', inline:'start', block:'nearest'}); };
+          dotsHost.appendChild(dot);
+        });
+      }
+      syncCardsNav();
+    }
+    function syncCardsNav(){
+      var host=document.getElementById('cards');
+      var prev=document.getElementById('cardsPrev'), next=document.getElementById('cardsNext');
+      var dotsHost=document.getElementById('cardDots');
+      if(!host || prev.classList.contains('hide')) return;
+      var atStart = host.scrollLeft <= 4;
+      var atEnd   = host.scrollLeft + host.clientWidth >= host.scrollWidth - 4;
+      prev.classList.toggle('dimmed', atStart);
+      next.classList.toggle('dimmed', atEnd);
+
+      if(dotsHost.classList.contains('hide')) return;
+      var order=cardOrder(), activeIdx=0, best=Infinity;
+      order.forEach(function(card, idx){
+        var d=Math.abs(card.offsetLeft - host.scrollLeft);
+        if(d<best){ best=d; activeIdx=idx; }
+      });
+      Array.prototype.forEach.call(dotsHost.children, function(dot, idx){
+        dot.classList.toggle('on', idx===activeIdx);
+      });
+    }
+    (function(){
+      var host=document.getElementById('cards');
+      var CARD_STEP=168+12;   // card width + gap, kept in sync with the CSS
+      document.getElementById('cardsPrev').onclick=function(){ host.scrollBy({left:-CARD_STEP*2, behavior:'smooth'}); };
+      document.getElementById('cardsNext').onclick=function(){ host.scrollBy({left: CARD_STEP*2, behavior:'smooth'}); };
+      var ticking=false;
+      host.addEventListener('scroll', function(){
+        if(ticking) return; ticking=true;
+        requestAnimationFrame(function(){ syncCardsNav(); ticking=false; });
+      });
+      window.addEventListener('resize', function(){ buildCardsNav(); });
+    })();
+
+    function options(){
+      var c=themeColors();
+      return {
+        responsive:true, maintainAspectRatio:false,
+        // A short transition when data actually changes reads as "the chart
+        // telling a story," not a jump-cut - but pinch-zoom/pan must stay
+        // instant, so this only matters for chart.update() calls we make
+        // ourselves; the zoom plugin forces its own updates to mode:'none'
+        // internally regardless of this setting, so gestures stay snappy.
+        animation:{ duration:350, easing:'easeOutQuart' },
+        parsing:false, normalized:true, layout:{ padding:{ top:18 } },
+        interaction:{ mode:'nearest', intersect:false },
+        scales:{
+          x:{ type:'linear',
+              ticks:{ maxTicksLimit:8, callback:function(v){ return fmtTime(v); }, color:c.tick, font:{size:11} },
+              grid:{ color:c.grid }, border:{ display:false } },
+          yTemp:{ type:'linear', position:'left', display:state.metrics.temp,
+              ticks:{ color:c.tick, font:{size:11}, callback:function(v){return (Math.round(v*10)/10)+'°';} },
+              grid:{ color:c.grid }, border:{ display:false } },
+          yHum:{ type:'linear', position:'right', display:state.metrics.hum, min:0, max:100,
+              ticks:{ color:c.tick, font:{size:11}, callback:function(v){return (Math.round(v*10)/10)+'%';} },
+              grid:{ drawOnChartArea:false }, border:{ display:false } }
+        },
+        plugins:{
+          legend:{ labels:{ color:c.legend, usePointStyle:true, pointStyle:'line', boxWidth:22, font:{size:12} } },
+          tooltip:{ callbacks:{
+            title:function(it){ return fmtTime(it[0].parsed.x); },
+            label:function(ctx){
+              var hum=ctx.dataset.yAxisID==='yHum';
+              return ctx.dataset.label+': '+ctx.parsed.y.toFixed(hum?0:1)+(hum?'%':'°');
+            }
+          } },
+          zoom:{
+            pan:{ enabled:true, mode:'x', onPanComplete:function(){ toggleResetLink(true); } },
+            zoom:{ wheel:{enabled:false}, pinch:{enabled:true}, mode:'x', onZoomComplete:function(){ toggleResetLink(true); } }
+          }
+        }
+      };
+    }
+
+    // pods are told apart by line DASH pattern (color is reserved for the metric)
+    var DASHES=[[],[7,4],[2,3],[10,4,2,4],[1,4],[14,5]];
+    function metricColors(){
+      var cs=getComputedStyle(document.documentElement);
+      return { temp:(cs.getPropertyValue('--temp').trim()||'#f0a54e'),
+               hum: (cs.getPropertyValue('--hum').trim()||'#5b8cff') };
+    }
+    function buildDatasets(series, cmpSeries, curStart, cmpStart, cmpLabel, metrics){
+      var out=[], pbg=themeColors().point, mc=metricColors(), keys=Object.keys(series);
+      var m=metrics||state.metrics;
+      var multi=keys.length>1;
+      var hasCmp=!!(cmpSeries && cmpStart!=null && cmpLabel);
+
+      function resolveColors(podClr, isCmp){
+        if(podClr) return { tCol:isCmp?hexToRgba(podClr,.48):podClr,
+                            hCol:isCmp?hexToRgba(podClr,.32):hexToRgba(podClr,.65) };
+        return { tCol:isCmp?hexToRgba(mc.temp,.48):mc.temp,
+                 hCol:isCmp?hexToRgba(mc.hum,.48):mc.hum };
+      }
+
+      function addSet(dev, pts, isCmp, pStart, devIdx){
+        var dash=isCmp?[5,5]:DASHES[devIdx%DASHES.length];
+        var podClr=multi?color(dev):null;
+        var cols=resolveColors(podClr,isCmp);
+        var suffix=hasCmp?(isCmp?cmpLabel:'now'):null;
+        var prefix=multi?dev+' ':'';
+        var normX=hasCmp?function(t){return t-pStart;}:function(t){return t;};
+
+        if(m.temp){
+          out.push({ label:prefix+(suffix?'°C · '+suffix:'Temperature'),
+            yAxisID:'yTemp', borderColor:cols.tCol, backgroundColor:'transparent',
+            borderWidth:isCmp?1.5:2, borderDash:dash, tension:.3, spanGaps:true,
+            pointRadius:0, pointBackgroundColor:pbg,
+            pointBorderColor:cols.tCol, pointBorderWidth:1.5, pointHoverRadius:4, pointHoverBorderWidth:2,
+            data:pts.map(function(p){return {x:normX(p.t),y:p.temp};}),
+            _podDev:dev, _podColor:podClr, _isHum:false, _isCmp:isCmp });
+        }
+        if(m.hum){
+          out.push({ label:prefix+(suffix?'% · '+suffix:'Relative Humidity'),
+            yAxisID:'yHum', borderColor:cols.hCol, backgroundColor:'transparent',
+            borderWidth:isCmp?1.25:1.75, borderDash:dash, tension:.3, spanGaps:true,
+            pointRadius:0, pointBackgroundColor:pbg,
+            pointBorderColor:cols.hCol, pointBorderWidth:1.5, pointHoverRadius:4, pointHoverBorderWidth:2,
+            data:pts.map(function(p){return {x:normX(p.t),y:p.hum};}),
+            _podDev:dev, _podColor:podClr, _isHum:true, _isCmp:isCmp });
+        }
+      }
+
+      keys.forEach(function(dev,idx){ addSet(dev, series[dev], false, curStart, idx); });
+      if(hasCmp && cmpSeries){
+        keys.forEach(function(dev,idx){ if(cmpSeries[dev]) addSet(dev, cmpSeries[dev], true, cmpStart, idx); });
+      }
+      return out;
+    }
+
+    // ---- analytics: low / avg / high over the current range & selection ----
+    var RANGE_LABEL={day:'last 24 hours',week:'last 7 days',month:'last 30 days',year:'last year',all:'all time'};
+    function stat(arr){
+      var v=arr.filter(function(x){return x!=null && !isNaN(x);});
+      if(!v.length) return null;
+      var min=v[0],max=v[0],sum=0;
+      for(var i=0;i<v.length;i++){ if(v[i]<min)min=v[i]; if(v[i]>max)max=v[i]; sum+=v[i]; }
+      return {min:min,max:max,avg:sum/v.length};
+    }
+    function aRow(label,s,u,dec){
+      if(!s) return '<div class="arow"><span class="alabel">'+label+'</span><span class="astat"><b>—</b></span></div>';
+      function f(x){ return x.toFixed(dec)+u; }
+      return '<div class="arow"><span class="alabel">'+label+'</span>'+
+        '<span class="astat"><b>'+f(s.min)+'</b><i>low</i></span>'+
+        '<span class="astat"><b>'+f(s.avg)+'</b><i>avg</i></span>'+
+        '<span class="astat"><b>'+f(s.max)+'</b><i>high</i></span></div>';
+    }
+    function renderAnalytics(series){
+      var host=document.getElementById('analytics'); if(!host) return;
+      var lbl=document.getElementById('arange'); if(lbl) lbl.textContent=' · '+(RANGE_LABEL[state.range]||state.range);
+      var keys=Object.keys(series);
+      if(!keys.length){ host.innerHTML='<div style="color:var(--muted);font-size:13px;padding:2px">Select a Dewvee to see its analytics.</div>'; return; }
+      var html='';
+      keys.forEach(function(dev, idx){
+        var pts=series[dev];
+        var ts=stat(pts.map(function(p){return p.temp;}));
+        var hs=stat(pts.map(function(p){return p.hum;}));
+        html+='<div class="acard enter" style="animation-delay:'+(idx*40)+'ms">'+
+          '<div class="aname"><span class="dot adot" data-dev="'+dev.replace(/&/g,'&amp;').replace(/"/g,'&quot;')+'" style="background:'+color(dev)+'"></span>'+dev+'</div>'+
+          aRow('Temperature',ts,'°',1)+
+          aRow('Relative humidity',hs,'%',0)+
+        '</div>';
+      });
+      host.innerHTML=html;
+    }
+
+    function setRefreshing(on){
+      var b=document.getElementById('refresh');
+      if(b){ b.classList.toggle('spinning',on); b.disabled=on; }
+    }
+
+    async function loadData(){
+      setRefreshing(true);
+      var devs=Array.from(state.selected);
+      var res=devs.length ? await gcall('getReadings',{range:state.range,devices:devs.join(',')}) : {series:{}};
+      if(!chart){
+        chart=new Chart(document.getElementById('chart').getContext('2d'),
+          { type:'line', data:{datasets:[]}, options:options() });
+      }
+      chart.options.scales.yTemp.display=state.metrics.temp;
+      chart.options.scales.yHum.display=state.metrics.hum;
+      delete chart.options.scales.x.min;
+      delete chart.options.scales.x.max;
+      chart.data.datasets=buildDatasets(res.series, null, 0, null, null);
+      chart.update();
+      renderAnalytics(res.series);
+      setRefreshing(false);
+    }
+
+    // recolor chart(s) when the theme changes (no data refetch, keeps zoom)
+    function recolorChart(ch){
+      if(!ch) return;
+      var c=themeColors(), mc=metricColors();
+      ch.options.scales.x.ticks.color=c.tick;    ch.options.scales.x.grid.color=c.grid;
+      ch.options.scales.yTemp.ticks.color=c.tick; ch.options.scales.yTemp.grid.color=c.grid;
+      ch.options.scales.yHum.ticks.color=c.tick;
+      ch.options.plugins.legend.labels.color=c.legend;
+      ch.data.datasets.forEach(function(d){
+        d.pointBackgroundColor=c.point;
+        var col;
+        if(d._podColor){
+          col=d._isHum?(d._isCmp?hexToRgba(d._podColor,.32):hexToRgba(d._podColor,.65))
+                      :(d._isCmp?hexToRgba(d._podColor,.48):d._podColor);
+        } else {
+          col=d._isHum?(d._isCmp?hexToRgba(mc.hum,.48):mc.hum)
+                      :(d._isCmp?hexToRgba(mc.temp,.48):mc.temp);
+        }
+        d.borderColor=col; d.pointBorderColor=col;
+      });
+      ch.update();
+    }
+    function applyChartTheme(){ recolorChart(chart); recolorChart(cmpChart); }
+
+    function toggleResetLink(on){
+      var a=document.getElementById('resetZoom');
+      if(a) a.classList.toggle('show', !!on);
+    }
+
+    document.getElementById('ranges').addEventListener('click',function(e){
+      var r=e.target.getAttribute('data-r'); if(!r) return;
+      state.range=r;
+      Array.prototype.forEach.call(this.children,function(b){ b.classList.toggle('on',b.getAttribute('data-r')===r); });
+      loadData().then(function(){ if(chart) chart.resetZoom(); toggleResetLink(false); });
+    });
+    document.getElementById('metrics').addEventListener('click',function(e){
+      var lbl=e.target.closest('.chk'); if(!lbl) return;
+      var m=lbl.getAttribute('data-m');
+      // keep at least one metric on
+      if(state.metrics[m] && !(m==='temp'?state.metrics.hum:state.metrics.temp)) return;
+      state.metrics[m]=!state.metrics[m];
+      lbl.classList.toggle('on',state.metrics[m]);
+      loadData();
+    });
+    document.getElementById('refresh').onclick=refreshAll;
+    document.getElementById('resetZoom').onclick=function(){ if(chart) chart.resetZoom(); toggleResetLink(false); };
+
+    // ---- theme toggle (icon crossfades instead of an instant swap) ----
+    var SUN='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2.5M12 19.5V22M3.5 12H6M18 12h2.5M5 5l1.8 1.8M17.2 17.2 19 19M19 5l-1.8 1.8M6.8 17.2 5 19"/></svg>';
+    var MOON='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/></svg>';
+    // both the home-screen and dashboard toggles share this - keep them
+    // in sync no matter which one you tap
+    function updateThemeBtn(crossfade){
+      var icon=isLight()?MOON:SUN;
+      document.querySelectorAll('.themeToggle').forEach(function(b){
+        if(!crossfade){ b.innerHTML=icon; return; }
+        b.style.opacity=0;
+        setTimeout(function(){ b.innerHTML=icon; b.style.opacity=1; }, 150);
+      });
+    }
+    function setTheme(t){ document.documentElement.setAttribute('data-theme',t); try{localStorage.setItem('dewvee_theme',t);}catch(e){} applyChartTheme(); updateThemeBtn(true); }
+    function initTheme(){ var s=null; try{s=localStorage.getItem('dewvee_theme');}catch(e){} if(s) document.documentElement.setAttribute('data-theme',s); updateThemeBtn(false); }
+    document.querySelectorAll('.themeToggle').forEach(function(b){
+      b.onclick=function(){ setTheme(isLight()?'dark':'light'); };
+    });
+    initTheme();
+
+    document.querySelector('#ranges [data-r="day"]').classList.add('on');
+
+    // ---- view router: splash -> home -> dashboard, crossfade + slide ----
+    // The OUTGOING view is briefly absolute-positioned (see the .leaving CSS
+    // rule) so it overlays instead of pushing layout while both are visible
+    // mid-transition - the incoming view is already normal-flow from frame
+    // one, so its size/layout is correct immediately.
+    function show(name){
+      ['home','dash','compare'].forEach(function(v){
+        var el=document.getElementById(v);
+        if(v===name){
+          el.classList.remove('leaving');
+          el.style.display='block';
+          requestAnimationFrame(function(){ el.classList.add('active'); });
+        } else if(el.classList.contains('active')){
+          el.classList.remove('active');
+          el.classList.add('leaving');
+          setTimeout(function(){ el.classList.remove('leaving'); el.style.display='none'; }, 230);
+        }
+      });
+    }
+    function showError(msg){ setBanner('⚠ '+msg); }
+    async function refreshAll(){
+      try {
+        await loadDevices(); await loadData();
+        var u=document.getElementById('updated');
+        if(u) u.textContent='updated '+new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+      }
+      catch(e){ showError('Could not reach the Sheet — check the web-app deployment & access. ('+(e&&e.message||e)+')'); }
+    }
+    var dashLoaded=false;
+    function openPods(){
+      show('dash');
+      if(!dashLoaded){
+        dashLoaded=true;
+        showSkeletonCards();
+        refreshAll();
+      } else if(chart){
+        chart.resize();
+      }
+    }
+    document.getElementById('tilePods').onclick=openPods;
+    document.getElementById('backHome').onclick=function(){ show('home'); };
+
+    // ════════════════════════════════════════════════════
+    //  COMPARE VIEW
+    // ════════════════════════════════════════════════════
+    var cmpViewState = { range:'day', selected:new Set(), devices:[],
+                         metrics:{temp:true,hum:true}, compare:null };
+    var cmpChart;
+
+    function cmpOptions(){
+      var c=themeColors();
+      return {
+        responsive:true, maintainAspectRatio:false,
+        animation:{ duration:350, easing:'easeOutQuart' },
+        parsing:false, normalized:true, layout:{ padding:{ top:18 } },
+        interaction:{ mode:'nearest', intersect:false },
+        scales:{
+          x:{ type:'linear', min:0, max:periodMs('day'),
+              ticks:{ maxTicksLimit:8, callback:function(v){ return fmtRel(v,cmpViewState.range); }, color:c.tick, font:{size:11} },
+              grid:{ color:c.grid }, border:{ display:false } },
+          yTemp:{ type:'linear', position:'left', display:true,
+              ticks:{ color:c.tick, font:{size:11}, callback:function(v){return (Math.round(v*10)/10)+'°';} },
+              grid:{ color:c.grid }, border:{ display:false } },
+          yHum:{ type:'linear', position:'right', display:true, min:0, max:100,
+              ticks:{ color:c.tick, font:{size:11}, callback:function(v){return (Math.round(v*10)/10)+'%';} },
+              grid:{ drawOnChartArea:false }, border:{ display:false } }
+        },
+        plugins:{
+          legend:{ labels:{ color:themeColors().legend, usePointStyle:true, pointStyle:'line', boxWidth:22, font:{size:12} } },
+          tooltip:{ callbacks:{
+            title:function(it){ return fmtRel(it[0].parsed.x, cmpViewState.range); },
+            label:function(ctx){
+              var hum=ctx.dataset.yAxisID==='yHum';
+              return ctx.dataset.label+': '+ctx.parsed.y.toFixed(hum?0:1)+(hum?'%':'°');
+            }
+          }},
+          zoom:{
+            pan:{ enabled:true, mode:'x', onPanComplete:function(){ toggleCmpResetLink(true); } },
+            zoom:{ wheel:{enabled:false}, pinch:{enabled:true}, mode:'x', onZoomComplete:function(){ toggleCmpResetLink(true); } }
+          }
+        }
+      };
+    }
+
+    function toggleCmpResetLink(on){
+      var a=document.getElementById('cmpResetZoom');
+      if(a){ a.style.opacity=on?'1':'0'; a.style.pointerEvents=on?'auto':'none'; }
+    }
+
+    function renderCmpChips(){
+      var host=document.getElementById('cmpChips'); host.innerHTML='';
+      cmpViewState.devices.forEach(function(d){
+        var chip=document.createElement('button');
+        chip.className='podChip'+(cmpViewState.selected.has(d.device)?' on':'');
+        chip.innerHTML='<span class="chipDot" style="background:'+color(d.device)+'"></span>'+d.device;
+        chip.onclick=function(){
+          if(cmpViewState.selected.has(d.device)){
+            if(cmpViewState.selected.size===1) return; // keep at least one
+            cmpViewState.selected.delete(d.device);
+          } else {
+            cmpViewState.selected.add(d.device);
+          }
+          chip.classList.toggle('on', cmpViewState.selected.has(d.device));
+          loadCmpData();
+        };
+        host.appendChild(chip);
+      });
+    }
+
+    async function loadCmpData(){
+      if(!cmpViewState.compare) return;
+      var devs=Array.from(cmpViewState.selected);
+      var pMs=periodMs(cmpViewState.range);
+      var now=Date.now();
+      var curFrom=now-pMs, curTo=now;
+      var cmpFrom=cmpViewState.compare.from, cmpTo=cmpViewState.compare.to;
+
+      // pick smallest deployed range that covers both windows
+      var needed=now-Math.min(curFrom,cmpFrom);
+      var fetchRange=needed<=periodMs('day')  ?'day'
+                    :needed<=periodMs('week')  ?'week'
+                    :needed<=periodMs('month') ?'month'
+                    :needed<=periodMs('year')  ?'year':'all';
+
+      var res={series:{}};
+      try{ res=devs.length ? await gcall('getReadings',{range:fetchRange, devices:devs.join(',')}) : {series:{}}; }catch(e){}
+
+      function sliceSeries(src,from,to){
+        var out={};
+        Object.keys(src).forEach(function(dev){
+          out[dev]=(src[dev]||[]).filter(function(p){ return p.t>=from&&p.t<=to; });
+        });
+        return out;
+      }
+
+      var curSeries=sliceSeries(res.series,curFrom,curTo);
+      var cmpSeries=sliceSeries(res.series,cmpFrom,cmpTo);
+
+      if(!cmpChart){
+        var _cv=document.getElementById('cmpChart');
+        cmpChart=Chart.getChart(_cv)||new Chart(_cv.getContext('2d'),
+          { type:'line', data:{datasets:[]}, options:cmpOptions() });
+      }
+      cmpChart.options.scales.yTemp.display=cmpViewState.metrics.temp;
+      cmpChart.options.scales.yHum.display=cmpViewState.metrics.hum;
+      cmpChart.options.scales.x.min=0;
+      cmpChart.options.scales.x.max=pMs;
+
+      var ds=buildDatasets(curSeries, cmpSeries, curFrom, cmpViewState.compare.from, cmpViewState.compare.label, cmpViewState.metrics);
+      cmpChart.data.datasets=ds;
+      cmpChart.update();
+
+      var badge=document.getElementById('cmpBadge');
+      badge.classList.remove('hide');
+      badge.innerHTML='<span class="cmpNow">— Solid</span> = now &nbsp;·&nbsp; <span class="cmpVs">- - Dashed</span> = '+cmpViewState.compare.label;
+    }
+
+    function applyCmpOffset(offset){
+      document.querySelectorAll('#cmpBar .cbopt').forEach(function(b){
+        b.classList.toggle('on', parseInt(b.getAttribute('data-coff'))===offset);
+      });
+      document.getElementById('cmpCustom').classList.toggle('hide', offset!==0);
+      if(offset>0){
+        var w=computeCompareWindow2(offset, cmpViewState.range);
+        cmpViewState.compare={ from:w.from, to:w.to, label:cmpPeriodLabel(w.from, cmpViewState.range), offset:offset };
+        loadCmpData();
+      }
+    }
+    function computeCompareWindow2(offset, range){
+      var pMs=periodMs(range), now=Date.now();
+      return { from:now-(offset+1)*pMs, to:now-offset*pMs };
+    }
+
+    async function openCompareView(){
+      show('compare');
+      refreshCmpBarLabels();
+      // load devices if not yet loaded
+      if(cmpViewState.devices.length===0){
+        try{
+          var info=await gcall('getDevices');
+          cmpViewState.devices=info.devices;
+          if(cmpViewState.selected.size===0) info.devices.forEach(function(d){ cmpViewState.selected.add(d.device); });
+        }catch(e){}
+      }
+      renderCmpChips();
+      if(!cmpViewState.compare) applyCmpOffset(1);
+      else loadCmpData();
+      if(cmpChart) cmpChart.resize();
+    }
+
+    document.getElementById('tileCompare').onclick=openCompareView;
+    document.getElementById('backFromCompare').onclick=function(){ show('home'); };
+    document.getElementById('cmpResetZoom').onclick=function(){ if(cmpChart) cmpChart.resetZoom(); toggleCmpResetLink(false); };
+
+    document.getElementById('cmpRanges').addEventListener('click',function(e){
+      var r=e.target.getAttribute('data-r'); if(!r) return;
+      cmpViewState.range=r;
+      Array.prototype.forEach.call(this.children,function(b){ b.classList.toggle('on',b.getAttribute('data-r')===r); });
+      refreshCmpBarLabels();
+      // recompute preset offset window for the new range
+      if(cmpViewState.compare && cmpViewState.compare.offset){
+        var w=computeCompareWindow2(cmpViewState.compare.offset, r);
+        cmpViewState.compare={ from:w.from, to:w.to, label:cmpPeriodLabel(w.from,r), offset:cmpViewState.compare.offset };
+      }
+      loadCmpData();
+    });
+
+    document.getElementById('cmpMetrics').addEventListener('click',function(e){
+      var lbl=e.target.closest('.chk'); if(!lbl) return;
+      var m=lbl.getAttribute('data-m');
+      if(cmpViewState.metrics[m] && !(m==='temp'?cmpViewState.metrics.hum:cmpViewState.metrics.temp)) return;
+      cmpViewState.metrics[m]=!cmpViewState.metrics[m];
+      lbl.classList.toggle('on',cmpViewState.metrics[m]);
+      loadCmpData();
+    });
+
+    document.querySelectorAll('#cmpBar .cbopt').forEach(function(btn){
+      btn.addEventListener('click',function(){
+        applyCmpOffset(parseInt(this.getAttribute('data-coff')));
+      });
+    });
+    document.getElementById('cmpApply').onclick=function(){
+      var fv=document.getElementById('cmpFrom').value, tv=document.getElementById('cmpTo').value;
+      if(!fv||!tv) return;
+      var from=new Date(fv).getTime(), to=new Date(tv).getTime();
+      if(!isFinite(from)||!isFinite(to)||from>=to) return;
+      var fmt=function(ms){ return new Date(ms).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); };
+      cmpViewState.compare={ from:from, to:to, label:fmt(from)+' – '+fmt(to), offset:null };
+      loadCmpData();
+    };
+
+    // splash: play once on first visit, then skip straight to home on return
+    (function(){
+      var s=document.getElementById('splash'), seen=false;
+      try{ seen=localStorage.getItem('dewvee_splash')==='1'; }catch(e){}
+      if(seen){ s.style.display='none'; show('home'); return; }
+      try{ localStorage.setItem('dewvee_splash','1'); }catch(e){}
+      setTimeout(function(){
+        s.classList.add('hide');
+        setTimeout(function(){ s.style.display='none'; show('home'); }, 500);
+      }, 1300);
+    })();
+
+    // keep data fresh once the dashboard has been opened
+    setInterval(function(){ if(dashLoaded) refreshAll(); }, 5*60*1000);
+
+    // ---------------- CSV export ----------------
+    function toDateInputValue(d){
+      var p=function(n){ return String(n).padStart(2,'0'); };
+      return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+    }
+    function openExportModal(){
+      var devs=Array.from(state.selected);
+      var who=document.getElementById('exportWho');
+      who.textContent = devs.length
+        ? 'Exporting: '+devs.join(', ')
+        : 'No Dewvee selected — tap one on the dashboard first.';
+      document.getElementById('exportGo').disabled = devs.length===0;
+
+      var to=new Date(), from=new Date(); from.setDate(from.getDate()-7);
+      document.getElementById('exportTo').value   = toDateInputValue(to);
+      document.getElementById('exportFrom').value = toDateInputValue(from);
+      document.getElementById('exportErr').classList.remove('show');
+
+      var ov=document.getElementById('exportOverlay');
+      ov.style.display='flex';
+      requestAnimationFrame(function(){ ov.classList.add('show'); });
+    }
+    function closeExportModal(){
+      var ov=document.getElementById('exportOverlay');
+      ov.classList.remove('show');
+      setTimeout(function(){ ov.style.display='none'; }, 180);
+    }
+    function exportErr(msg){
+      var e=document.getElementById('exportErr');
+      e.textContent=msg; e.classList.toggle('show', !!msg);
+    }
+    function csvCell(v){
+      v = (v===null || v===undefined) ? '' : String(v);
+      return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v;
+    }
+    function fmtStamp(ms){
+      var d=new Date(ms), p=function(n){ return String(n).padStart(2,'0'); };
+      return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+
+             p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());
+    }
+    async function runExport(){
+      var fromStr=document.getElementById('exportFrom').value;
+      var toStr=document.getElementById('exportTo').value;
+      if(!fromStr || !toStr){ exportErr('Pick both a from and a to date.'); return; }
+      var fromMs=new Date(fromStr+'T00:00:00').getTime();
+      var toMs=new Date(toStr+'T23:59:59.999').getTime();
+      if(isNaN(fromMs) || isNaN(toMs)){ exportErr('Invalid date.'); return; }
+      if(fromMs>toMs){ exportErr('"From" must be before "To".'); return; }
+
+      var devs=Array.from(state.selected);
+      if(!devs.length){ exportErr('Select at least one Dewvee first.'); return; }
+      exportErr('');
+
+      var goBtn=document.getElementById('exportGo');
+      goBtn.disabled=true; goBtn.textContent='Exporting…';
+      try{
+        var res=await gcall('getReadingsRange',{from:fromMs,to:toMs,devices:devs.join(',')});
+        var rows=(res&&res.rows)||[];
+        if(!rows.length){ exportErr('No readings found in that range.'); return; }
+
+        var lines=['Timestamp,Device,Temperature (C),Relative Humidity (%),Battery (%),Battery (V)'];
+        rows.forEach(function(r){
+          lines.push([fmtStamp(r.t),r.device,r.temp,r.hum,r.pct,r.volt].map(csvCell).join(','));
+        });
+        var blob=new Blob([lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});
+        var url=URL.createObjectURL(blob);
+        var a=document.createElement('a');
+        a.href=url; a.download='dewvee-export-'+fromStr+'-to-'+toStr+'.csv';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+        closeExportModal();
+      } catch(e){
+        exportErr('Export failed: '+(e&&e.message||e));
+      } finally {
+        goBtn.disabled=false; goBtn.textContent='Export';
+      }
+    }
+    document.getElementById('exportBtn').onclick=openExportModal;
+    document.getElementById('exportCancel').onclick=closeExportModal;
+    document.getElementById('exportOverlay').addEventListener('click',function(e){
+      if(e.target.id==='exportOverlay') closeExportModal();
+    });
+    document.getElementById('exportGo').onclick=runExport;
+  </script>
+</body>
+</html>
