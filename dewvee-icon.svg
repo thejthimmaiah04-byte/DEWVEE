@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 64 64" role="img" aria-label="Dewvee app icon">
+  <defs>
+    <linearGradient id="dewvee-ig" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f0a54e"/>
+      <stop offset="1" stop-color="#5b8cff"/>
+    </linearGradient>
+    <clipPath id="dewvee-ic">
+      <path d="M32 4 C32 4 14 30 14 43 A18 18 0 1 0 50 43 C50 30 32 4 32 4 Z"/>
+    </clipPath>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#0b0c0e"/>
+  <path d="M32 4 C32 4 14 30 14 43 A18 18 0 1 0 50 43 C50 30 32 4 32 4 Z" fill="url(#dewvee-ig)"/>
+  <g clip-path="url(#dewvee-ic)">
+    <path d="M14 44 L23 36 L30 41 L38 29 L46 35 L52 27" fill="none" stroke="#fff"
+          stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
