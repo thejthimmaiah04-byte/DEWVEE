@@ -955,8 +955,64 @@
         if(ticking) return; ticking=true;
         requestAnimationFrame(function(){ syncCardsNav(); ticking=false; });
       });
-      window.addEventListener('resize', function(){ buildCardsNav(); });
+      window.addEventListener('resize', function(){
+        buildCardsNav();
+        // show/hide legend depending on screen width
+        if(chart){ chart.options.plugins.legend.display=!isMobile(); chart.update('none'); }
+        if(cmpChart){ cmpChart.options.plugins.legend.display=!isMobile(); cmpChart.update('none'); }
+      });
     })();
+
+    function isMobile(){ return window.innerWidth<=520; }
+
+    // gradient fill: regenerated before every draw so it tracks resize + theme changes
+    var dewveeGradientPlugin = {
+      id: 'dewveeGradient',
+      beforeDraw: function(chart){
+        var ctx=chart.ctx, ca=chart.chartArea;
+        if(!ca) return;
+        chart.data.datasets.forEach(function(ds){
+          if(ds._isCmp || !ds._rawColor || !ds.fill) return;
+          var a = ds._multi ? (ds._isHum?0.05:0.08) : (ds._isHum?0.11:0.15);
+          var g=ctx.createLinearGradient(0, ca.top, 0, ca.bottom);
+          g.addColorStop(0, hexToRgba(ds._rawColor, a));
+          g.addColorStop(1, hexToRgba(ds._rawColor, 0));
+          ds.backgroundColor=g;
+        });
+      }
+    };
+
+    // vertical crosshair that follows the cursor/finger
+    var dewveeCrosshairPlugin = {
+      id: 'dewveeCrosshair',
+      afterDraw: function(chart){
+        var x=chart._crosshairX;
+        if(!x) return;
+        var ctx=chart.ctx, ca=chart.chartArea;
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(x, ca.top);
+        ctx.lineTo(x, ca.bottom);
+        ctx.strokeStyle='rgba(128,128,128,0.38)';
+        ctx.lineWidth=1;
+        ctx.setLineDash([4,4]);
+        ctx.stroke();
+        ctx.restore();
+      },
+      afterEvent: function(chart, args){
+        var e=args.event, ca=chart.chartArea;
+        if(!ca) return;
+        var newX=null;
+        if((e.type==='mousemove'||e.type==='touchmove') && e.x>=ca.left && e.x<=ca.right) newX=e.x;
+        if(newX!==chart._crosshairX){
+          chart._crosshairX=newX;
+          chart.draw();
+        } else if(e.type==='mouseout' && chart._crosshairX){
+          chart._crosshairX=null;
+          chart.draw();
+        }
+      }
+    };
 
     function options(){
       var c=themeColors();
@@ -969,12 +1025,12 @@
         // internally regardless of this setting, so gestures stay snappy.
         animation:{ duration:350, easing:'easeOutQuart' },
         parsing:false, normalized:true, layout:{ padding:{ top:18 } },
-        interaction:{ mode:'nearest', intersect:false },
+        interaction:{ mode:'index', intersect:false },
         scales:{
           x:{ type:'linear',
               ticks:{ maxTicksLimit:8, callback:function(v){ return fmtTime(v); }, color:c.tick, font:{size:11} },
               grid:{ color:c.grid }, border:{ display:false } },
-          yTemp:{ type:'linear', position:'left', display:state.metrics.temp,
+          yTemp:{ type:'linear', position:'left', display:state.metrics.temp, grace:'8%',
               ticks:{ color:c.tick, font:{size:11}, callback:function(v){return (Math.round(v*10)/10)+'°';} },
               grid:{ color:c.grid }, border:{ display:false } },
           yHum:{ type:'linear', position:'right', display:state.metrics.hum, min:0, max:100,
@@ -982,7 +1038,7 @@
               grid:{ drawOnChartArea:false }, border:{ display:false } }
         },
         plugins:{
-          legend:{ labels:{ color:c.legend, usePointStyle:true, pointStyle:'line', boxWidth:22, font:{size:12} } },
+          legend:{ display:!isMobile(), labels:{ color:c.legend, usePointStyle:true, pointStyle:'line', boxWidth:22, font:{size:12} } },
           tooltip:{ callbacks:{
             title:function(it){ return fmtTime(it[0].parsed.x); },
             label:function(ctx){
@@ -1029,20 +1085,24 @@
         if(m.temp){
           out.push({ label:prefix+(suffix?'°C · '+suffix:'Temperature'),
             yAxisID:'yTemp', borderColor:cols.tCol, backgroundColor:'transparent',
-            borderWidth:isCmp?1.5:2, borderDash:dash, tension:.3, spanGaps:true,
+            fill:isCmp?false:'start',
+            borderWidth:isCmp?1.5:2, borderDash:dash, tension:.38, spanGaps:true,
             pointRadius:0, pointBackgroundColor:pbg,
             pointBorderColor:cols.tCol, pointBorderWidth:1.5, pointHoverRadius:4, pointHoverBorderWidth:2,
             data:pts.map(function(p){return {x:normX(p.t),y:p.temp};}),
-            _podDev:dev, _podColor:podClr, _isHum:false, _isCmp:isCmp });
+            _podDev:dev, _podColor:podClr, _isHum:false, _isCmp:isCmp,
+            _rawColor:podClr||mc.temp, _multi:multi });
         }
         if(m.hum){
           out.push({ label:prefix+(suffix?'% · '+suffix:'Relative Humidity'),
             yAxisID:'yHum', borderColor:cols.hCol, backgroundColor:'transparent',
-            borderWidth:isCmp?1.25:1.75, borderDash:dash, tension:.3, spanGaps:true,
+            fill:isCmp?false:'start',
+            borderWidth:isCmp?1.25:1.75, borderDash:dash, tension:.38, spanGaps:true,
             pointRadius:0, pointBackgroundColor:pbg,
             pointBorderColor:cols.hCol, pointBorderWidth:1.5, pointHoverRadius:4, pointHoverBorderWidth:2,
             data:pts.map(function(p){return {x:normX(p.t),y:p.hum};}),
-            _podDev:dev, _podColor:podClr, _isHum:true, _isCmp:isCmp });
+            _podDev:dev, _podColor:podClr, _isHum:true, _isCmp:isCmp,
+            _rawColor:podClr||mc.hum, _multi:multi });
         }
       }
 
@@ -1100,7 +1160,7 @@
       var res=devs.length ? await gcall('getReadings',{range:state.range,devices:devs.join(',')}) : {series:{}};
       if(!chart){
         chart=new Chart(document.getElementById('chart').getContext('2d'),
-          { type:'line', data:{datasets:[]}, options:options() });
+          { type:'line', data:{datasets:[]}, options:options(), plugins:[dewveeGradientPlugin,dewveeCrosshairPlugin] });
       }
       chart.options.scales.yTemp.display=state.metrics.temp;
       chart.options.scales.yHum.display=state.metrics.hum;
@@ -1245,12 +1305,12 @@
         responsive:true, maintainAspectRatio:false,
         animation:{ duration:350, easing:'easeOutQuart' },
         parsing:false, normalized:true, layout:{ padding:{ top:18 } },
-        interaction:{ mode:'nearest', intersect:false },
+        interaction:{ mode:'index', intersect:false },
         scales:{
           x:{ type:'linear', min:0, max:periodMs('day'),
               ticks:{ maxTicksLimit:8, callback:function(v){ return fmtRel(v,cmpViewState.range); }, color:c.tick, font:{size:11} },
               grid:{ color:c.grid }, border:{ display:false } },
-          yTemp:{ type:'linear', position:'left', display:true,
+          yTemp:{ type:'linear', position:'left', display:true, grace:'8%',
               ticks:{ color:c.tick, font:{size:11}, callback:function(v){return (Math.round(v*10)/10)+'°';} },
               grid:{ color:c.grid }, border:{ display:false } },
           yHum:{ type:'linear', position:'right', display:true, min:0, max:100,
@@ -1258,7 +1318,7 @@
               grid:{ drawOnChartArea:false }, border:{ display:false } }
         },
         plugins:{
-          legend:{ labels:{ color:themeColors().legend, usePointStyle:true, pointStyle:'line', boxWidth:22, font:{size:12} } },
+          legend:{ display:!isMobile(), labels:{ color:themeColors().legend, usePointStyle:true, pointStyle:'line', boxWidth:22, font:{size:12} } },
           tooltip:{ callbacks:{
             title:function(it){ return fmtRel(it[0].parsed.x, cmpViewState.range); },
             label:function(ctx){
@@ -1278,6 +1338,19 @@
       var a=document.getElementById('cmpResetZoom');
       if(a){ a.style.opacity=on?'1':'0'; a.style.pointerEvents=on?'auto':'none'; }
     }
+
+    // double-tap or double-click anywhere on the chart to reset zoom
+    function addDoubleTapReset(canvasId, getChart, resetFn){
+      var el=document.getElementById(canvasId), lastTap=0;
+      el.addEventListener('dblclick', function(){ var c=getChart(); if(c){ c.resetZoom(); resetFn(false); } });
+      el.addEventListener('touchend', function(){
+        var now=Date.now();
+        if(now-lastTap<300){ var c=getChart(); if(c){ c.resetZoom(); resetFn(false); } }
+        lastTap=now;
+      });
+    }
+    addDoubleTapReset('chart',    function(){ return chart; },    toggleResetLink);
+    addDoubleTapReset('cmpChart', function(){ return cmpChart; }, toggleCmpResetLink);
 
     function renderCmpChips(){
       var host=document.getElementById('cmpChips'); host.innerHTML='';
@@ -1331,7 +1404,7 @@
       if(!cmpChart){
         var _cv=document.getElementById('cmpChart');
         cmpChart=Chart.getChart(_cv)||new Chart(_cv.getContext('2d'),
-          { type:'line', data:{datasets:[]}, options:cmpOptions() });
+          { type:'line', data:{datasets:[]}, options:cmpOptions(), plugins:[dewveeGradientPlugin,dewveeCrosshairPlugin] });
       }
       cmpChart.options.scales.yTemp.display=cmpViewState.metrics.temp;
       cmpChart.options.scales.yHum.display=cmpViewState.metrics.hum;
