@@ -1031,7 +1031,7 @@
               ticks:{ maxTicksLimit:8, callback:function(v){ return fmtTime(v); }, color:c.tick, font:{size:11} },
               grid:{ color:c.grid }, border:{ display:false } },
           yTemp:{ type:'linear', position:'left', display:state.metrics.temp, grace:'8%',
-              ticks:{ color:c.tick, font:{size:11}, callback:function(v){return (Math.round(v*10)/10)+'°';} },
+              ticks:{ color:c.tick, font:{size:11}, callback:function(v){return v.toFixed(1)+'°';} },
               grid:{ color:c.grid }, border:{ display:false } },
           yHum:{ type:'linear', position:'right', display:state.metrics.hum, min:0, max:100,
               ticks:{ color:c.tick, font:{size:11}, callback:function(v){return (Math.round(v*10)/10)+'%';} },
@@ -1043,7 +1043,7 @@
             title:function(it){ return fmtTime(it[0].parsed.x); },
             label:function(ctx){
               var hum=ctx.dataset.yAxisID==='yHum';
-              return ctx.dataset.label+': '+ctx.parsed.y.toFixed(hum?0:1)+(hum?'%':'°');
+              return ctx.dataset.label+': '+ctx.parsed.y.toFixed(hum?1:2)+(hum?'%':'°C');
             }
           } },
           zoom:{
@@ -1311,7 +1311,7 @@
               ticks:{ maxTicksLimit:8, callback:function(v){ return fmtRel(v,cmpViewState.range); }, color:c.tick, font:{size:11} },
               grid:{ color:c.grid }, border:{ display:false } },
           yTemp:{ type:'linear', position:'left', display:true, grace:'8%',
-              ticks:{ color:c.tick, font:{size:11}, callback:function(v){return (Math.round(v*10)/10)+'°';} },
+              ticks:{ color:c.tick, font:{size:11}, callback:function(v){return v.toFixed(1)+'°';} },
               grid:{ color:c.grid }, border:{ display:false } },
           yHum:{ type:'linear', position:'right', display:true, min:0, max:100,
               ticks:{ color:c.tick, font:{size:11}, callback:function(v){return (Math.round(v*10)/10)+'%';} },
@@ -1323,7 +1323,7 @@
             title:function(it){ return fmtRel(it[0].parsed.x, cmpViewState.range); },
             label:function(ctx){
               var hum=ctx.dataset.yAxisID==='yHum';
-              return ctx.dataset.label+': '+ctx.parsed.y.toFixed(hum?0:1)+(hum?'%':'°');
+              return ctx.dataset.label+': '+ctx.parsed.y.toFixed(hum?1:2)+(hum?'%':'°C');
             }
           }},
           zoom:{
