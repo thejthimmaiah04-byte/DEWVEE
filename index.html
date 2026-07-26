@@ -340,6 +340,8 @@
       #cmpRanges::-webkit-scrollbar{ display:none; }
       #cmpBar{ overflow-x:auto; flex-wrap:nowrap; scrollbar-width:none; padding-bottom:12px; }
       #cmpBar::-webkit-scrollbar{ display:none; }
+      /* chart — keep landscape ratio, not square */
+      .chartwrap{ height:clamp(180px,56vw,250px); }
       /* analytics */
       .analytics{ grid-template-columns:1fr; }
       .arow .alabel{ width:90px; }
@@ -1197,7 +1199,16 @@
           setTimeout(function(){ el.classList.remove('leaving'); el.style.display='none'; }, 230);
         }
       });
+      // push a history entry so the hardware back button navigates within the app
+      if(name==='home'){
+        history.replaceState({dewvee:'home'}, '');
+      } else {
+        history.pushState({dewvee:name}, '');
+      }
     }
+    window.addEventListener('popstate', function(e){
+      show((e.state && e.state.dewvee) || 'home');
+    });
     function showError(msg){ setBanner('⚠ '+msg); }
     async function refreshAll(){
       try {
@@ -1219,7 +1230,7 @@
       }
     }
     document.getElementById('tilePods').onclick=openPods;
-    document.getElementById('backHome').onclick=function(){ show('home'); };
+    document.getElementById('backHome').onclick=function(){ history.back(); };
 
     // ════════════════════════════════════════════════════
     //  COMPARE VIEW
@@ -1370,7 +1381,7 @@
     }
 
     document.getElementById('tileCompare').onclick=openCompareView;
-    document.getElementById('backFromCompare').onclick=function(){ show('home'); };
+    document.getElementById('backFromCompare').onclick=function(){ history.back(); };
     document.getElementById('cmpResetZoom').onclick=function(){ if(cmpChart) cmpChart.resetZoom(); toggleCmpResetLink(false); };
 
     document.getElementById('cmpRanges').addEventListener('click',function(e){
