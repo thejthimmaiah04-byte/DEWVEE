@@ -1136,7 +1136,7 @@
       }
 
       function addSet(dev, pts, isCmp, pStart, devIdx){
-        var dash=isCmp?[5,5]:DASHES[devIdx%DASHES.length];
+        var dash=isCmp?[5,5]:[];
         var podClr=null; // color is metric-fixed: orange=temp, blue=hum; dash identifies the device
         var cols=resolveColors(podClr,isCmp);
         var suffix=hasCmp?(isCmp?cmpLabel:'now'):null;
