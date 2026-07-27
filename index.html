@@ -957,9 +957,6 @@
       });
       window.addEventListener('resize', function(){
         buildCardsNav();
-        // show/hide legend depending on screen width
-        if(chart){ chart.options.plugins.legend.display=!isMobile(); chart.update('none'); }
-        if(cmpChart){ cmpChart.options.plugins.legend.display=!isMobile(); cmpChart.update('none'); }
       });
     })();
 
@@ -1014,8 +1011,12 @@
       }
     };
 
-    // corner legend: one entry per device (dash pattern + name), top-right of chart area
-    // only draws when 2+ devices are on the chart; single-device charts stay clean
+    // device line widths — thick vs thin lets you tell devices apart without dashes or color changes
+    var DEV_WIDTHS = [2.5, 1.4, 2.0, 1.2, 2.8];
+    function devWidth(idx){ return DEV_WIDTHS[idx % DEV_WIDTHS.length]; }
+
+    // corner legend: colored identity dot + line-weight sample + name
+    // only appears when 2+ devices are on the chart
     var dewveeDeviceLegendPlugin = {
       id: 'dewveeDeviceLegend',
       afterDraw: function(chart){
@@ -1023,31 +1024,31 @@
         chart.data.datasets.forEach(function(ds){
           if(ds._podDev && !ds._isCmp && !seen[ds._podDev]){
             seen[ds._podDev]=true;
-            devices.push({ name:ds._podDev, dash:ds.borderDash||[] });
+            devices.push({ name:ds._podDev, w:ds._devWidth||2, clr:ds._devIdentityColor||'#aaa' });
           }
         });
         if(devices.length<=1) return;
 
         var ctx=chart.ctx, ca=chart.chartArea;
         var light=isLight();
-        var textClr  = light?'rgba(64,69,76,.92)'    :'rgba(174,180,189,.92)';
-        var bgClr    = light?'rgba(255,255,255,.90)'  :'rgba(20,21,24,.90)';
-        var borderClr= light?'rgba(0,0,0,.09)'        :'rgba(255,255,255,.08)';
+        var textClr  = light?'rgba(55,62,70,.92)'     :'rgba(174,180,189,.92)';
+        var bgClr    = light?'rgba(255,255,255,.92)'   :'rgba(18,19,22,.92)';
+        var borderClr= light?'rgba(0,0,0,.08)'         :'rgba(255,255,255,.07)';
 
-        var lineLen=20, gap=6, fs=11, itemH=18, px=10, py=8;
+        var dotR=4, lineLen=18, gap=6, fs=11, itemH=20, px=10, py=7;
         ctx.save();
         ctx.font='600 '+fs+'px Montserrat,system-ui,sans-serif';
 
         var maxW=0;
         devices.forEach(function(d){ var w=ctx.measureText(d.name).width; if(w>maxW) maxW=w; });
 
-        var bw=px*2+lineLen+gap+maxW;
+        var bw=px*2+dotR*2+gap+lineLen+gap+maxW;
         var bh=py*2+devices.length*itemH;
         var bx=ca.right-bw-8;
         var by=ca.top+8;
 
         // rounded background
-        var rr=7;
+        var rr=8;
         ctx.beginPath();
         ctx.moveTo(bx+rr,by);
         ctx.arcTo(bx+bw,by, bx+bw,by+bh, rr);
@@ -1058,18 +1059,22 @@
         ctx.fillStyle=bgClr; ctx.fill();
         ctx.strokeStyle=borderClr; ctx.lineWidth=1; ctx.setLineDash([]); ctx.stroke();
 
-        // one row per device
         devices.forEach(function(d,i){
           var ey=by+py+i*itemH+itemH*0.5;
           var lx=bx+px;
+          // identity dot (matches card dot color)
           ctx.beginPath();
-          ctx.setLineDash(d.dash||[]);
-          ctx.moveTo(lx,ey); ctx.lineTo(lx+lineLen,ey);
-          ctx.strokeStyle=textClr; ctx.lineWidth=2; ctx.stroke();
-          ctx.setLineDash([]);
+          ctx.arc(lx+dotR, ey, dotR, 0, Math.PI*2);
+          ctx.fillStyle=d.clr; ctx.fill();
+          // line-weight sample (shows thick vs thin)
+          ctx.beginPath();
+          ctx.moveTo(lx+dotR*2+gap, ey);
+          ctx.lineTo(lx+dotR*2+gap+lineLen, ey);
+          ctx.strokeStyle=textClr; ctx.lineWidth=d.w; ctx.setLineDash([]); ctx.stroke();
+          // device name
           ctx.fillStyle=textClr;
           ctx.textBaseline='middle'; ctx.textAlign='left';
-          ctx.fillText(d.name, lx+lineLen+gap, ey);
+          ctx.fillText(d.name, lx+dotR*2+gap+lineLen+gap, ey);
         });
         ctx.restore();
       }
@@ -1099,7 +1104,7 @@
               grid:{ drawOnChartArea:false }, border:{ display:false } }
         },
         plugins:{
-          legend:{ display:!isMobile(), labels:{ color:c.legend, usePointStyle:true, pointStyle:'line', boxWidth:22, font:{size:12} } },
+          legend:{ display:false },
           tooltip:{ callbacks:{
             title:function(it){ return fmtTime(it[0].parsed.x); },
             label:function(ctx){
@@ -1137,33 +1142,39 @@
 
       function addSet(dev, pts, isCmp, pStart, devIdx){
         var dash=isCmp?[5,5]:[];
-        var podClr=null; // color is metric-fixed: orange=temp, blue=hum; dash identifies the device
+        var podClr=null;
         var cols=resolveColors(podClr,isCmp);
         var suffix=hasCmp?(isCmp?cmpLabel:'now'):null;
         var prefix=multi?dev+' ':'';
         var normX=hasCmp?function(t){return t-pStart;}:function(t){return t;};
+        var dw=devWidth(devIdx);
+        var bwT=isCmp?dw*0.65:dw;
+        var bwH=isCmp?dw*0.52:dw*0.78;
+        var idClr=color(dev);
 
         if(m.temp){
-          out.push({ label:prefix+(suffix?'°C · '+suffix:'Temperature'),
+          out.push({ label:prefix+(suffix?'°C · '+suffix:'Temp'),
             yAxisID:'yTemp', borderColor:cols.tCol, backgroundColor:'transparent',
             fill:isCmp?false:'start',
-            borderWidth:isCmp?1.5:2, borderDash:dash, tension:.38, spanGaps:true,
+            borderWidth:bwT, borderDash:dash, tension:.38, spanGaps:true,
             pointRadius:0, pointBackgroundColor:pbg,
             pointBorderColor:cols.tCol, pointBorderWidth:1.5, pointHoverRadius:4, pointHoverBorderWidth:2,
             data:pts.map(function(p){return {x:normX(p.t),y:p.temp};}),
             _podDev:dev, _podColor:podClr, _isHum:false, _isCmp:isCmp,
-            _rawColor:podClr||mc.temp, _multi:multi });
+            _rawColor:podClr||mc.temp, _multi:multi,
+            _devWidth:dw, _devIdentityColor:idClr });
         }
         if(m.hum){
-          out.push({ label:prefix+(suffix?'% · '+suffix:'Relative Humidity'),
+          out.push({ label:prefix+(suffix?'% · '+suffix:'RH'),
             yAxisID:'yHum', borderColor:cols.hCol, backgroundColor:'transparent',
             fill:isCmp?false:'start',
-            borderWidth:isCmp?1.25:1.75, borderDash:dash, tension:.38, spanGaps:true,
+            borderWidth:bwH, borderDash:dash, tension:.38, spanGaps:true,
             pointRadius:0, pointBackgroundColor:pbg,
             pointBorderColor:cols.hCol, pointBorderWidth:1.5, pointHoverRadius:4, pointHoverBorderWidth:2,
             data:pts.map(function(p){return {x:normX(p.t),y:p.hum};}),
             _podDev:dev, _podColor:podClr, _isHum:true, _isCmp:isCmp,
-            _rawColor:podClr||mc.hum, _multi:multi });
+            _rawColor:podClr||mc.hum, _multi:multi,
+            _devWidth:dw, _devIdentityColor:idClr });
         }
       }
 
@@ -1240,7 +1251,6 @@
       ch.options.scales.x.ticks.color=c.tick;    ch.options.scales.x.grid.color=c.grid;
       ch.options.scales.yTemp.ticks.color=c.tick; ch.options.scales.yTemp.grid.color=c.grid;
       ch.options.scales.yHum.ticks.color=c.tick;
-      ch.options.plugins.legend.labels.color=c.legend;
       ch.data.datasets.forEach(function(d){
         d.pointBackgroundColor=c.point;
         var col;
@@ -1379,7 +1389,7 @@
               grid:{ drawOnChartArea:false }, border:{ display:false } }
         },
         plugins:{
-          legend:{ display:!isMobile(), labels:{ color:themeColors().legend, usePointStyle:true, pointStyle:'line', boxWidth:22, font:{size:12} } },
+          legend:{ display:false },
           tooltip:{ callbacks:{
             title:function(it){ return fmtRel(it[0].parsed.x, cmpViewState.range); },
             label:function(ctx){
