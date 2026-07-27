@@ -1014,6 +1014,67 @@
       }
     };
 
+    // corner legend: one entry per device (dash pattern + name), top-right of chart area
+    // only draws when 2+ devices are on the chart; single-device charts stay clean
+    var dewveeDeviceLegendPlugin = {
+      id: 'dewveeDeviceLegend',
+      afterDraw: function(chart){
+        var devices=[], seen={};
+        chart.data.datasets.forEach(function(ds){
+          if(ds._podDev && !ds._isCmp && !seen[ds._podDev]){
+            seen[ds._podDev]=true;
+            devices.push({ name:ds._podDev, dash:ds.borderDash||[] });
+          }
+        });
+        if(devices.length<=1) return;
+
+        var ctx=chart.ctx, ca=chart.chartArea;
+        var light=isLight();
+        var textClr  = light?'rgba(64,69,76,.92)'    :'rgba(174,180,189,.92)';
+        var bgClr    = light?'rgba(255,255,255,.90)'  :'rgba(20,21,24,.90)';
+        var borderClr= light?'rgba(0,0,0,.09)'        :'rgba(255,255,255,.08)';
+
+        var lineLen=20, gap=6, fs=11, itemH=18, px=10, py=8;
+        ctx.save();
+        ctx.font='600 '+fs+'px Montserrat,system-ui,sans-serif';
+
+        var maxW=0;
+        devices.forEach(function(d){ var w=ctx.measureText(d.name).width; if(w>maxW) maxW=w; });
+
+        var bw=px*2+lineLen+gap+maxW;
+        var bh=py*2+devices.length*itemH;
+        var bx=ca.right-bw-8;
+        var by=ca.top+8;
+
+        // rounded background
+        var rr=7;
+        ctx.beginPath();
+        ctx.moveTo(bx+rr,by);
+        ctx.arcTo(bx+bw,by, bx+bw,by+bh, rr);
+        ctx.arcTo(bx+bw,by+bh, bx,by+bh, rr);
+        ctx.arcTo(bx,by+bh, bx,by, rr);
+        ctx.arcTo(bx,by, bx+bw,by, rr);
+        ctx.closePath();
+        ctx.fillStyle=bgClr; ctx.fill();
+        ctx.strokeStyle=borderClr; ctx.lineWidth=1; ctx.setLineDash([]); ctx.stroke();
+
+        // one row per device
+        devices.forEach(function(d,i){
+          var ey=by+py+i*itemH+itemH*0.5;
+          var lx=bx+px;
+          ctx.beginPath();
+          ctx.setLineDash(d.dash||[]);
+          ctx.moveTo(lx,ey); ctx.lineTo(lx+lineLen,ey);
+          ctx.strokeStyle=textClr; ctx.lineWidth=2; ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle=textClr;
+          ctx.textBaseline='middle'; ctx.textAlign='left';
+          ctx.fillText(d.name, lx+lineLen+gap, ey);
+        });
+        ctx.restore();
+      }
+    };
+
     function options(){
       var c=themeColors();
       return {
@@ -1054,7 +1115,7 @@
       };
     }
 
-    // pods are told apart by line DASH pattern (color is reserved for the metric)
+    // pods are told apart by line DASH pattern; temp is always orange, hum always blue
     var DASHES=[[],[7,4],[2,3],[10,4,2,4],[1,4],[14,5]];
     function metricColors(){
       var cs=getComputedStyle(document.documentElement);
@@ -1076,7 +1137,7 @@
 
       function addSet(dev, pts, isCmp, pStart, devIdx){
         var dash=isCmp?[5,5]:DASHES[devIdx%DASHES.length];
-        var podClr=multi?color(dev):null;
+        var podClr=null; // color is metric-fixed: orange=temp, blue=hum; dash identifies the device
         var cols=resolveColors(podClr,isCmp);
         var suffix=hasCmp?(isCmp?cmpLabel:'now'):null;
         var prefix=multi?dev+' ':'';
@@ -1160,7 +1221,7 @@
       var res=devs.length ? await gcall('getReadings',{range:state.range,devices:devs.join(',')}) : {series:{}};
       if(!chart){
         chart=new Chart(document.getElementById('chart').getContext('2d'),
-          { type:'line', data:{datasets:[]}, options:options(), plugins:[dewveeGradientPlugin,dewveeCrosshairPlugin] });
+          { type:'line', data:{datasets:[]}, options:options(), plugins:[dewveeGradientPlugin,dewveeCrosshairPlugin,dewveeDeviceLegendPlugin] });
       }
       chart.options.scales.yTemp.display=state.metrics.temp;
       chart.options.scales.yHum.display=state.metrics.hum;
@@ -1404,7 +1465,7 @@
       if(!cmpChart){
         var _cv=document.getElementById('cmpChart');
         cmpChart=Chart.getChart(_cv)||new Chart(_cv.getContext('2d'),
-          { type:'line', data:{datasets:[]}, options:cmpOptions(), plugins:[dewveeGradientPlugin,dewveeCrosshairPlugin] });
+          { type:'line', data:{datasets:[]}, options:cmpOptions(), plugins:[dewveeGradientPlugin,dewveeCrosshairPlugin,dewveeDeviceLegendPlugin] });
       }
       cmpChart.options.scales.yTemp.display=cmpViewState.metrics.temp;
       cmpChart.options.scales.yHum.display=cmpViewState.metrics.hum;
