@@ -352,6 +352,14 @@
       .analytics{ grid-template-columns:1fr; }
       .arow .alabel{ width:90px; }
     }
+    /* split panels (multi-device mode) */
+    .singleChartWrap.hide{ display:none; }
+    .splitChartWrap{ display:flex; flex-direction:column; gap:14px; }
+    .splitChartWrap.hide{ display:none; }
+    .splitPanelTitle{ font-size:11px; font-weight:700; color:var(--muted);
+                      text-transform:uppercase; letter-spacing:.07em; padding:0 2px 6px; }
+    .splitPanel .chartwrap{ height:clamp(140px,27vh,300px); }
+    @media(max-width:520px){ .splitPanel .chartwrap{ height:clamp(120px,36vw,185px); } }
   </style>
 </head>
 <body>
@@ -483,7 +491,17 @@
         <a id="resetZoom">reset zoom</a>
       </div>
       <div class="devLegend hide" id="devLegend"></div>
-      <div class="chartwrap"><canvas id="chart"></canvas></div>
+      <div id="singleChartWrap" class="chartwrap"><canvas id="chart"></canvas></div>
+      <div class="splitChartWrap hide" id="splitChartWrap">
+        <div class="splitPanel" id="tempSplitPanel">
+          <div class="splitPanelTitle">Temperature</div>
+          <div class="chartwrap"><canvas id="chartSplitTemp"></canvas></div>
+        </div>
+        <div class="splitPanel" id="humSplitPanel">
+          <div class="splitPanelTitle">Relative Humidity</div>
+          <div class="chartwrap"><canvas id="chartSplitHum"></canvas></div>
+        </div>
+      </div>
     </div>
     <div class="hint">Tap a Dewvee to add/remove it • pinch to zoom • drag to pan</div>
 
@@ -628,7 +646,7 @@
     }
 
     var state = { range:'day', selected:new Set(), devices:[], metrics:{temp:true, hum:true} };
-    var chart;
+    var chart, chartSplitTemp, chartSplitHum;
 
     // ---- compare helpers ----
     var PERIOD_MS = { '6h':6*3600e3, '12h':12*3600e3, day:86400e3, week:7*86400e3, month:30*86400e3, year:365*86400e3 };
@@ -1046,6 +1064,100 @@
       host.classList.remove('hide');
     }
 
+    function renderColorLegend(devKeys, hostId){
+      var host=document.getElementById(hostId); if(!host) return;
+      if(devKeys.length<=1){ host.classList.add('hide'); host.innerHTML=''; return; }
+      host.innerHTML=devKeys.map(function(dev){
+        return '<span class="devLegendItem">'+
+          '<span class="devLegendDot" style="background:'+color(dev)+'"></span>'+
+          dev+'</span>';
+      }).join('');
+      host.classList.remove('hide');
+    }
+
+    function buildSplitDatasets(series, metric){
+      var out=[], pbg=themeColors().point, isHum=(metric==='hum');
+      Object.keys(series).forEach(function(dev,idx){
+        var pts=series[dev], clr=color(dev), dw=devWidth(idx);
+        out.push({
+          label:dev, yAxisID:'y',
+          borderColor:clr, backgroundColor:'transparent', fill:false,
+          borderWidth:isHum?dw*0.78:dw, borderDash:[], tension:.38, spanGaps:true,
+          pointRadius:0, pointBackgroundColor:pbg,
+          pointBorderColor:clr, pointBorderWidth:1.5, pointHoverRadius:4, pointHoverBorderWidth:2,
+          data:pts.map(function(p){return {x:p.t, y:isHum?p.hum:p.temp};}),
+          _podDev:dev, _isHum:isHum, _devWidth:dw, _devIdentityColor:clr
+        });
+      });
+      return out;
+    }
+
+    function splitPanelOptions(metric){
+      var c=themeColors(), isHum=(metric==='hum');
+      var yScale={
+        type:'linear', position:'left',
+        ticks:{ color:c.tick, font:{size:10},
+          callback:isHum?function(v){return (Math.round(v*10)/10)+'%';}
+                        :function(v){return v.toFixed(1)+'°';} },
+        grid:{ color:c.grid }, border:{ display:false }
+      };
+      if(isHum){ yScale.min=0; yScale.max=100; } else { yScale.grace='8%'; }
+      return {
+        responsive:true, maintainAspectRatio:false,
+        animation:{ duration:350, easing:'easeOutQuart' },
+        parsing:false, normalized:true, layout:{ padding:{ top:12 } },
+        interaction:{ mode:'index', intersect:false },
+        scales:{
+          x:{ type:'linear',
+              ticks:{ maxTicksLimit:6, callback:function(v){return fmtTime(v);}, color:c.tick, font:{size:10} },
+              grid:{ color:c.grid }, border:{ display:false } },
+          y:yScale
+        },
+        plugins:{
+          legend:{ display:false },
+          tooltip:{ callbacks:{
+            title:function(it){return fmtTime(it[0].parsed.x);},
+            label:function(ctx){
+              var h=(metric==='hum');
+              return ctx.dataset.label+': '+ctx.parsed.y.toFixed(h?1:2)+(h?'%':'°C');
+            }
+          }},
+          zoom:{
+            pan:{ enabled:true, mode:'x', onPanComplete:function(){ toggleResetLink(true); } },
+            zoom:{ wheel:{enabled:false}, pinch:{enabled:true}, mode:'x', onZoomComplete:function(){ toggleResetLink(true); } }
+          }
+        }
+      };
+    }
+
+    function loadSplitCharts(series){
+      var singleWrap=document.getElementById('singleChartWrap');
+      var splitWrap=document.getElementById('splitChartWrap');
+      var tempPanel=document.getElementById('tempSplitPanel');
+      var humPanel=document.getElementById('humSplitPanel');
+      singleWrap.classList.add('hide');
+      splitWrap.classList.remove('hide');
+      if(tempPanel) tempPanel.style.display=state.metrics.temp?'':'none';
+      if(humPanel)  humPanel.style.display=state.metrics.hum?'':'none';
+      if(state.metrics.temp){
+        if(!chartSplitTemp){
+          chartSplitTemp=new Chart(document.getElementById('chartSplitTemp').getContext('2d'),
+            {type:'line',data:{datasets:[]},options:splitPanelOptions('temp'),plugins:[dewveeCrosshairPlugin]});
+        }
+        chartSplitTemp.data.datasets=buildSplitDatasets(series,'temp');
+        chartSplitTemp.update();
+      }
+      if(state.metrics.hum){
+        if(!chartSplitHum){
+          chartSplitHum=new Chart(document.getElementById('chartSplitHum').getContext('2d'),
+            {type:'line',data:{datasets:[]},options:splitPanelOptions('hum'),plugins:[dewveeCrosshairPlugin]});
+        }
+        chartSplitHum.data.datasets=buildSplitDatasets(series,'hum');
+        chartSplitHum.update();
+      }
+      renderColorLegend(Object.keys(series),'devLegend');
+    }
+
     function options(){
       var c=themeColors();
       return {
@@ -1196,17 +1308,26 @@
       setRefreshing(true);
       var devs=Array.from(state.selected);
       var res=devs.length ? await gcall('getReadings',{range:state.range,devices:devs.join(',')}) : {series:{}};
-      if(!chart){
-        chart=new Chart(document.getElementById('chart').getContext('2d'),
-          { type:'line', data:{datasets:[]}, options:options(), plugins:[dewveeGradientPlugin,dewveeCrosshairPlugin,dewveeDeviceLegendPlugin] });
+      var multi=Object.keys(res.series).length>1;
+      if(multi){
+        loadSplitCharts(res.series);
+      } else {
+        var singleWrap=document.getElementById('singleChartWrap');
+        var splitWrap=document.getElementById('splitChartWrap');
+        if(singleWrap) singleWrap.classList.remove('hide');
+        if(splitWrap)  splitWrap.classList.add('hide');
+        if(!chart){
+          chart=new Chart(document.getElementById('chart').getContext('2d'),
+            { type:'line', data:{datasets:[]}, options:options(), plugins:[dewveeGradientPlugin,dewveeCrosshairPlugin,dewveeDeviceLegendPlugin] });
+        }
+        chart.options.scales.yTemp.display=state.metrics.temp;
+        chart.options.scales.yHum.display=state.metrics.hum;
+        delete chart.options.scales.x.min;
+        delete chart.options.scales.x.max;
+        chart.data.datasets=buildDatasets(res.series, null, 0, null, null);
+        chart.update();
+        renderDevLegend(chart.data.datasets, 'devLegend');
       }
-      chart.options.scales.yTemp.display=state.metrics.temp;
-      chart.options.scales.yHum.display=state.metrics.hum;
-      delete chart.options.scales.x.min;
-      delete chart.options.scales.x.max;
-      chart.data.datasets=buildDatasets(res.series, null, 0, null, null);
-      chart.update();
-      renderDevLegend(chart.data.datasets, 'devLegend');
       renderAnalytics(res.series);
       setRefreshing(false);
     }
@@ -1232,7 +1353,15 @@
       });
       ch.update();
     }
-    function applyChartTheme(){ recolorChart(chart); recolorChart(cmpChart); }
+    function recolorSplitChart(ch){
+      if(!ch) return;
+      var c=themeColors();
+      ch.options.scales.x.ticks.color=c.tick; ch.options.scales.x.grid.color=c.grid;
+      ch.options.scales.y.ticks.color=c.tick; ch.options.scales.y.grid.color=c.grid;
+      ch.data.datasets.forEach(function(d){ d.pointBackgroundColor=c.point; });
+      ch.update();
+    }
+    function applyChartTheme(){ recolorChart(chart); recolorChart(cmpChart); recolorSplitChart(chartSplitTemp); recolorSplitChart(chartSplitHum); }
 
     function toggleResetLink(on){
       var a=document.getElementById('resetZoom');
@@ -1255,7 +1384,12 @@
       loadData();
     });
     document.getElementById('refresh').onclick=refreshAll;
-    document.getElementById('resetZoom').onclick=function(){ if(chart) chart.resetZoom(); toggleResetLink(false); };
+    document.getElementById('resetZoom').onclick=function(){
+      if(chart) chart.resetZoom();
+      if(chartSplitTemp) chartSplitTemp.resetZoom();
+      if(chartSplitHum) chartSplitHum.resetZoom();
+      toggleResetLink(false);
+    };
 
     // ---- theme toggle (icon crossfades instead of an instant swap) ----
     var SUN='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2.5M12 19.5V22M3.5 12H6M18 12h2.5M5 5l1.8 1.8M17.2 17.2 19 19M19 5l-1.8 1.8M6.8 17.2 5 19"/></svg>';
@@ -1323,8 +1457,10 @@
         dashLoaded=true;
         showSkeletonCards();
         refreshAll();
-      } else if(chart){
-        chart.resize();
+      } else {
+        if(chart) chart.resize();
+        if(chartSplitTemp) chartSplitTemp.resize();
+        if(chartSplitHum) chartSplitHum.resize();
       }
     }
     document.getElementById('tilePods').onclick=openPods;
