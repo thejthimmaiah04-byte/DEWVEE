@@ -345,6 +345,19 @@ void applyConfigJson(const String& json) {
   Serial.println("Config saved over BLE.");
 }
 
+class ServerCallbacks : public BLEServerCallbacks {
+  void onConnect(BLEServer*) override {
+    // Single white blink = phone connected
+    ledBlink(40, 40, 40, 1, 250, 0);
+    ledConfig();   // restore dim blue
+    Serial.println("BLE client connected.");
+  }
+  void onDisconnect(BLEServer*) override {
+    BLEDevice::startAdvertising();
+    Serial.println("BLE client disconnected - resuming advertising.");
+  }
+};
+
 class ConfigCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic* c) override {
     String incoming = c->getValue().c_str();
@@ -359,6 +372,7 @@ void runConfigMode() {
 
   BLEDevice::init(("Dewvee-" + cfg.name).c_str());
   BLEServer*  server = BLEDevice::createServer();
+  server->setCallbacks(new ServerCallbacks());
   BLEService* svc    = server->createService(SERVICE_UUID);
 
   configChar = svc->createCharacteristic(CONFIG_UUID,
@@ -383,6 +397,13 @@ void runConfigMode() {
       configSaved = false;
       start  = millis();
       window = 30000;   // linger 30 s after a save for follow-up edits
+      // Solid green for 1.5 s = config saved successfully to flash
+#ifdef RGB_BUILTIN
+      rgbLedWrite(RGB_BUILTIN, 0, 40, 0);
+      delay(1500);
+      ledConfig();      // back to dim blue (still in config mode)
+#endif
+      Serial.println("Config saved - green confirmed.");
     }
   }
   BLEDevice::deinit(true);
@@ -419,26 +440,15 @@ void setup() {
     if (connectWiFi(20000)) {
       Serial.println("New WiFi OK.");
       if (syncNTP(10000)) { timeSynced = true; lastSyncEpoch = currentEpoch(); }
-      bool uploadOk = true;
       if (bufCount > 0) {
-        uploadOk = uploadBatch();
-        if (uploadOk) { bufCount = 0; Serial.println("Buffer flushed."); }
-        else            { Serial.println("Upload failed - buffer kept."); }
+        if (uploadBatch()) { bufCount = 0; Serial.println("Buffer flushed."); }
+        else                { Serial.println("Upload failed - buffer kept."); }
       }
       WiFi.mode(WIFI_OFF);
-#ifdef RGB_BUILTIN
-      rgbLedWrite(RGB_BUILTIN, uploadOk ? 0 : 40, uploadOk ? 40 : 15, 0);
-#endif
-      Serial.println(uploadOk ? "Solid green." : "Solid amber.");
     } else {
       WiFi.mode(WIFI_OFF);
-#ifdef RGB_BUILTIN
-      rgbLedWrite(RGB_BUILTIN, 40, 0, 0);
-#endif
-      Serial.println("WiFi failed - solid red.");
+      Serial.println("New WiFi credentials failed to connect.");
     }
-    delay(5000);
-    ledOff();
     goToSleep();
     return;
   }
