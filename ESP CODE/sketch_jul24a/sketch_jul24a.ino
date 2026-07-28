@@ -395,6 +395,11 @@ void runConfigMode() {
     wifiCredChanged = false;
     Serial.println("WiFi credentials changed - testing new network...");
 
+    // Give the radio time to fully exit BLE mode before starting WiFi.
+    delay(500);
+    WiFi.disconnect(true);
+    delay(300);
+
     if (connectWiFi(20000)) {
       Serial.println("New WiFi connected.");
       if (syncNTP(10000)) {
