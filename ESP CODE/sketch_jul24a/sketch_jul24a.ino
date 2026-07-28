@@ -114,8 +114,9 @@ RTC_DATA_ATTR uint32_t bootCount     = 0;
 RTC_DATA_ATTR bool     timeSynced    = false;
 RTC_DATA_ATTR uint32_t lastSyncEpoch = 0;
 RTC_DATA_ATTR bool     registered    = false;
-RTC_DATA_ATTR float    lastVbat      = 0;
-RTC_DATA_ATTR uint8_t  lastPct       = 0;
+RTC_DATA_ATTR float    lastVbat        = 0;
+RTC_DATA_ATTR uint8_t  lastPct         = 0;
+RTC_DATA_ATTR bool     pendingWifiTest = false;  // set before restart after BLE cred change
 
 Adafruit_SHT4x sht = Adafruit_SHT4x();
 
@@ -388,59 +389,15 @@ void runConfigMode() {
   ledOff();
   Serial.println("Config mode ended.");
 
-  // If WiFi credentials were changed, test the new network immediately,
-  // upload any buffered data, and blink the LED to confirm.
-  // BLE is fully shut down first so both radios never run at the same time.
+  // If WiFi credentials were changed, flag a test for the next boot and
+  // restart immediately. The ESP32-C6 radio cannot switch cleanly from BLE
+  // to WiFi within the same boot cycle; a fresh start avoids that issue.
   if (wifiCredChanged) {
-    wifiCredChanged = false;
-    Serial.println("WiFi credentials changed - testing new network...");
-
-    // Give the radio time to fully exit BLE mode before starting WiFi.
-    delay(500);
-    WiFi.disconnect(true);
-    delay(300);
-
-    if (connectWiFi(20000)) {
-      Serial.println("New WiFi connected.");
-      if (syncNTP(10000)) {
-        timeSynced    = true;
-        lastSyncEpoch = currentEpoch();
-      }
-      bool uploadOk = true;
-      if (bufCount > 0) {
-        uploadOk = uploadBatch();
-        if (uploadOk) {
-          bufCount = 0;
-          Serial.println("Buffer flushed on new network.");
-        } else {
-          Serial.println("Upload failed - buffer kept for next timer wake.");
-        }
-      }
-      WiFi.mode(WIFI_OFF);
-      // Solid green = new WiFi works and data is on the sheet
-      // Solid amber  = connected but upload failed (data still safe in buffer)
-      // LED stays on until the pod goes to sleep (~10 s for magnet removal wait)
-      if (uploadOk) {
-        Serial.println("Solid green - all good.");
-#ifdef RGB_BUILTIN
-        rgbLedWrite(RGB_BUILTIN, 0, 40, 0);
-#endif
-      } else {
-        Serial.println("Solid amber - WiFi OK but upload failed.");
-#ifdef RGB_BUILTIN
-        rgbLedWrite(RGB_BUILTIN, 40, 15, 0);
-#endif
-      }
-    } else {
-      WiFi.mode(WIFI_OFF);
-      // Solid red = could not connect with the new credentials
-      Serial.println("New WiFi credentials failed - solid red.");
-#ifdef RGB_BUILTIN
-      rgbLedWrite(RGB_BUILTIN, 40, 0, 0);
-#endif
-    }
-    delay(5000);   // hold the colour for 5 s so it's easy to see
-    ledOff();
+    wifiCredChanged  = false;
+    pendingWifiTest  = true;   // RTC_DATA_ATTR — survives the restart
+    Serial.println("WiFi credentials changed - restarting to test new network.");
+    delay(100);
+    esp_restart();
   }
 }
 
@@ -453,6 +410,38 @@ void setup() {
   delay(50);
 
   loadConfig();
+
+  // --- Post-BLE WiFi credential test ---
+  // Runs once on the restart that follows a credential change in BLE config mode.
+  if (pendingWifiTest) {
+    pendingWifiTest = false;
+    Serial.println("Post-BLE WiFi test starting...");
+    if (connectWiFi(20000)) {
+      Serial.println("New WiFi OK.");
+      if (syncNTP(10000)) { timeSynced = true; lastSyncEpoch = currentEpoch(); }
+      bool uploadOk = true;
+      if (bufCount > 0) {
+        uploadOk = uploadBatch();
+        if (uploadOk) { bufCount = 0; Serial.println("Buffer flushed."); }
+        else            { Serial.println("Upload failed - buffer kept."); }
+      }
+      WiFi.mode(WIFI_OFF);
+#ifdef RGB_BUILTIN
+      rgbLedWrite(RGB_BUILTIN, uploadOk ? 0 : 40, uploadOk ? 40 : 15, 0);
+#endif
+      Serial.println(uploadOk ? "Solid green." : "Solid amber.");
+    } else {
+      WiFi.mode(WIFI_OFF);
+#ifdef RGB_BUILTIN
+      rgbLedWrite(RGB_BUILTIN, 40, 0, 0);
+#endif
+      Serial.println("WiFi failed - solid red.");
+    }
+    delay(5000);
+    ledOff();
+    goToSleep();
+    return;
+  }
 
   // Magnet wake -> BLE config mode, then back to sleep
 #if ENABLE_REED_WAKE
