@@ -360,6 +360,54 @@
                       text-transform:uppercase; letter-spacing:.07em; padding:0 2px 6px; }
     .splitPanel .chartwrap{ height:clamp(140px,27vh,300px); }
     @media(max-width:520px){ .splitPanel .chartwrap{ height:clamp(120px,36vw,185px); } }
+    /* ── configure / BLE view ── */
+    .cfgConnectBox{ background:var(--card); border:1px solid var(--line); border-radius:16px;
+                    padding:36px 24px; text-align:center; box-shadow:var(--sh-1); margin-bottom:18px; }
+    .cfgConnectBox svg.cfgBleIcon{ width:46px; height:46px; margin-bottom:14px; }
+    .cfgConnectBox h2{ font-size:18px; font-weight:800; letter-spacing:-.01em; margin:0 0 8px; }
+    .cfgConnectBox p{ color:var(--muted); font-size:13px; margin:0 0 22px; line-height:1.65; }
+    .bleBtn{ font:inherit; font-weight:700; font-size:14px; background:var(--hum); color:#fff;
+             border:none; border-radius:10px; padding:11px 26px; cursor:pointer; transition:.15s; }
+    .bleBtn:hover{ opacity:.88; }
+    .bleBtn:disabled{ opacity:.45; cursor:default; }
+    .bleStatusRow{ display:flex; align-items:center; justify-content:center;
+                   gap:8px; margin-top:16px; font-size:12px; color:var(--muted); min-height:20px; }
+    .bleDot{ width:8px; height:8px; border-radius:50%; background:var(--muted); flex:none; }
+    .bleStatusRow.connected{ color:var(--good); } .bleStatusRow.connected .bleDot{ background:var(--good); }
+    .bleStatusRow.err{ color:var(--bad); }        .bleStatusRow.err .bleDot{ background:var(--bad); }
+    .cfgCard{ background:var(--card); border:1px solid var(--line); border-radius:16px;
+              padding:20px; box-shadow:var(--sh-2); }
+    .cfgConnBar{ display:flex; align-items:center; gap:10px; padding-bottom:14px;
+                 border-bottom:1px solid var(--line); margin-bottom:18px; }
+    .cfgConnBar .cfgDevName{ font-size:13px; font-weight:700; }
+    .cfgDiscoBtn{ font:inherit; font-size:12px; color:var(--muted); background:transparent;
+                  border:1px solid var(--line); border-radius:16px; padding:4px 11px;
+                  cursor:pointer; transition:.15s; margin-left:auto; }
+    .cfgDiscoBtn:hover{ color:var(--bad); border-color:rgba(229,72,77,.4); }
+    .cfgField{ margin-bottom:14px; }
+    .cfgField > label{ display:block; font-size:11.5px; font-weight:600; color:var(--muted);
+                       margin-bottom:5px; letter-spacing:.02em; }
+    .cfgField input{ display:block; width:100%; font:inherit; font-size:14px; color:var(--ink);
+                     background:var(--bg); border:1px solid var(--line); border-radius:9px;
+                     padding:9px 11px; box-sizing:border-box; transition:border-color .15s; }
+    .cfgField input:focus{ outline:none; border-color:rgba(91,140,255,.55); }
+    .cfgToggleRow{ display:flex; align-items:center; justify-content:space-between;
+                   padding:10px 0; border-bottom:1px solid var(--line); margin-bottom:14px; }
+    .cfgToggleLabel{ font-size:14px; font-weight:600; }
+    .cfgSwitch{ position:relative; width:44px; height:24px; flex:none; }
+    .cfgSwitch input{ opacity:0; width:0; height:0; }
+    .cfgSwitchSlider{ position:absolute; inset:0; background:var(--line); border-radius:12px;
+                      cursor:pointer; transition:.2s; }
+    .cfgSwitchSlider::before{ content:''; position:absolute; width:18px; height:18px;
+                               border-radius:50%; background:#fff; left:3px; top:3px; transition:.2s; }
+    .cfgSwitch input:checked + .cfgSwitchSlider{ background:var(--good); }
+    .cfgSwitch input:checked + .cfgSwitchSlider::before{ transform:translateX(20px); }
+    .cfgSaveRow{ display:flex; align-items:center; gap:14px; margin-top:18px;
+                 padding-top:16px; border-top:1px solid var(--line); }
+    .cfgSaveStat{ font-size:13px; font-weight:600; }
+    .cfgSaveStat.ok{ color:var(--good); } .cfgSaveStat.err{ color:var(--bad); }
+    .cfgNote{ color:var(--muted); font-size:11px; text-align:center;
+              margin-top:20px; line-height:1.55; }
   </style>
 </head>
 <body>
@@ -415,20 +463,14 @@
         <div class="tname">Compare</div>
         <div class="tsub">Overlay periods &amp; Dewvees side by side</div>
       </button>
-      <button class="tile soon">
-        <svg class="ticon" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="3"/>
-          <line x1="12" y1="3" x2="12" y2="6.3"/>
-          <line x1="12" y1="17.7" x2="12" y2="21"/>
-          <line x1="3" y1="12" x2="6.3" y2="12"/>
-          <line x1="17.7" y1="12" x2="21" y2="12"/>
-          <line x1="5.8" y1="5.8" x2="8.1" y2="8.1"/>
-          <line x1="15.9" y1="15.9" x2="18.2" y2="18.2"/>
-          <line x1="5.8" y1="18.2" x2="8.1" y2="15.9"/>
-          <line x1="15.9" y1="8.1" x2="18.2" y2="5.8"/>
+      <button class="tile" id="tileConfig">
+        <svg class="ticon" viewBox="0 0 46 46" fill="none" aria-hidden="true">
+          <defs><linearGradient id="cfgG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5b8cff"/><stop offset="1" stop-color="#3ecf8e"/></linearGradient></defs>
+          <path d="M23 8 L26 14 L32 12 L34 18 L40 20 L36 25 L38 32 L32 32 L30 38 L23 36 L16 38 L14 32 L8 32 L10 25 L6 20 L12 18 L14 12 L20 14 Z" stroke="url(#cfgG)" stroke-width="2" stroke-linejoin="round"/>
+          <circle cx="23" cy="23" r="5" stroke="url(#cfgG)" stroke-width="2"/>
         </svg>
         <div class="tname">Configure</div>
-        <div class="tsub">Rename &amp; configure Dewvees · soon</div>
+        <div class="tsub">Name, WiFi &amp; intervals via Bluetooth</div>
       </button>
     </div>
   </div>
@@ -570,6 +612,94 @@
       <div class="cmpBadge hide" id="cmpBadge" style="font-size:11px;color:var(--muted);padding:6px 2px 2px"></div>
     </div>
     <div class="hint">Select Dewvees above · pinch to zoom · drag to pan</div>
+  </main>
+  </div>
+
+  <!-- ═══════════════ CONFIG VIEW ═══════════════ -->
+  <div id="config" class="view">
+  <header>
+    <button class="back" id="backFromConfig">‹ Home</button>
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 64 64" role="img" aria-label="Dewvee">
+        <defs>
+          <linearGradient id="cfgBrandG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f0a54e"/><stop offset="1" stop-color="#5b8cff"/></linearGradient>
+          <clipPath id="cfgBrandC"><path d="M32 6 C32 6 16 30 16 42 A16 16 0 1 0 48 42 C48 30 32 6 32 6 Z"/></clipPath>
+        </defs>
+        <path d="M32 6 C32 6 16 30 16 42 A16 16 0 1 0 48 42 C48 30 32 6 32 6 Z" fill="url(#cfgBrandG)"/>
+        <g clip-path="url(#cfgBrandC)"><path d="M17 42 L24 36 L30 40 L37 30 L44 35 L50 28" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></g>
+      </svg>
+      <div><h1>Configure</h1></div>
+    </div>
+    <div class="row">
+      <span class="spacer"></span>
+      <button class="iconbtn themeToggle" aria-label="Toggle light/dark theme"></button>
+    </div>
+  </header>
+  <main>
+    <div class="banner" id="bleBanner"></div>
+
+    <!-- connect card -->
+    <div class="cfgConnectBox">
+      <svg class="cfgBleIcon" viewBox="0 0 46 46" fill="none" aria-hidden="true">
+        <defs><linearGradient id="bleG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5b8cff"/><stop offset="1" stop-color="#3ecf8e"/></linearGradient></defs>
+        <path d="M16 14 L30 23 L22 30 L22 8 L30 15 L16 23" stroke="url(#bleG)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <h2>Connect to a Dewvee</h2>
+      <p>Swipe a magnet over the pod first — the blue LED means it's ready.<br>Then tap Connect and select your pod from the list.</p>
+      <button class="bleBtn" id="bleConnectBtn">Connect</button>
+      <div class="bleStatusRow" id="bleStatusRow">
+        <span class="bleDot"></span><span id="bleStatusText">Not connected</span>
+      </div>
+    </div>
+
+    <!-- config form — shown only when BLE is connected -->
+    <div class="cfgCard hide" id="cfgForm">
+      <div class="cfgConnBar">
+        <span class="dot" style="background:var(--good)"></span>
+        <span class="cfgDevName" id="cfgDevName">—</span>
+        <button class="cfgDiscoBtn" id="bleDiscoBtn">Disconnect</button>
+      </div>
+
+      <div class="cfgField">
+        <label>Device Name</label>
+        <input type="text" id="cfgName" maxlength="32" placeholder="DEWVEE:01">
+      </div>
+      <div class="cfgField">
+        <label>Sample every (minutes)</label>
+        <input type="number" id="cfgSampleMin" min="1" max="60" value="5">
+      </div>
+      <div class="cfgField">
+        <label>Upload every (hours)</label>
+        <input type="number" id="cfgUploadHrs" min="1" max="168" value="6">
+      </div>
+      <div class="cfgToggleRow">
+        <span class="cfgToggleLabel">Send data to Google Sheet</span>
+        <label class="cfgSwitch">
+          <input type="checkbox" id="cfgUploadsEnabled" checked>
+          <span class="cfgSwitchSlider"></span>
+        </label>
+      </div>
+      <div class="cfgField">
+        <label>WiFi Network (SSID)</label>
+        <input type="text" id="cfgSsid" placeholder="Network name">
+      </div>
+      <div class="cfgField">
+        <label>WiFi Password</label>
+        <input type="password" id="cfgPass" placeholder="Leave blank to keep current password">
+      </div>
+      <div class="cfgField">
+        <label>Google Sheets URL</label>
+        <input type="text" id="cfgUrl" placeholder="https://script.google.com/…">
+      </div>
+
+      <div class="cfgSaveRow">
+        <button class="bleBtn" id="cfgSaveBtn">Save to Pod</button>
+        <span class="cfgSaveStat" id="cfgSaveStat"></span>
+      </div>
+    </div>
+
+    <p class="cfgNote">Requires Chrome or Edge · must be served over HTTPS<br>
+      (GitHub Pages works — local file:// does not)</p>
   </main>
   </div>
   </div>
@@ -1419,7 +1549,7 @@
     // mid-transition - the incoming view is already normal-flow from frame
     // one, so its size/layout is correct immediately.
     function show(name){
-      ['home','dash','compare'].forEach(function(v){
+      ['home','dash','compare','config'].forEach(function(v){
         var el=document.getElementById(v);
         if(v===name){
           el.classList.remove('leaving');
@@ -1767,6 +1897,120 @@
       if(e.target.id==='exportOverlay') closeExportModal();
     });
     document.getElementById('exportGo').onclick=runExport;
+
+    // ════════════════════════════════════════════════════
+    //  CONFIGURE VIEW — Web Bluetooth
+    // ════════════════════════════════════════════════════
+    var BLE_SVC = 'd5770001-9e0b-4b7a-9c1e-2f3a4b5c6d7e';
+    var BLE_CFG = 'd5770002-9e0b-4b7a-9c1e-2f3a4b5c6d7e';
+    var BLE_STA = 'd5770003-9e0b-4b7a-9c1e-2f3a4b5c6d7e';
+    var bleDevice=null, bleCfgChar=null, bleStaChar=null;
+
+    function setBleStatus(state, msg){
+      var row=document.getElementById('bleStatusRow');
+      var txt=document.getElementById('bleStatusText');
+      row.className='bleStatusRow'+(state?' '+state:'');
+      txt.textContent=msg||'';
+    }
+    function setCfgSaveStat(state, msg){
+      var el=document.getElementById('cfgSaveStat');
+      el.className='cfgSaveStat'+(state?' '+state:'');
+      el.textContent=msg||'';
+    }
+    function onBleDisconnect(){
+      bleCfgChar=null; bleStaChar=null;
+      setBleStatus('','Disconnected');
+      document.getElementById('cfgForm').classList.add('hide');
+      var btn=document.getElementById('bleConnectBtn');
+      btn.disabled=false; btn.textContent='Connect';
+    }
+    function bleFillForm(cfg){
+      document.getElementById('cfgName').value          = cfg.name      || '';
+      document.getElementById('cfgSampleMin').value     = cfg.sampleMin || 5;
+      document.getElementById('cfgUploadHrs').value     = cfg.uploadHrs || 6;
+      document.getElementById('cfgUploadsEnabled').checked = (cfg.up!==0);
+      document.getElementById('cfgSsid').value          = cfg.ssid      || '';
+      document.getElementById('cfgPass').value          = '';
+      document.getElementById('cfgUrl').value           = cfg.url       || '';
+      document.getElementById('cfgDevName').textContent = (bleDevice&&bleDevice.name)||cfg.name||'—';
+      setCfgSaveStat('','');
+    }
+    async function bleConnect(){
+      if(!navigator.bluetooth){
+        setBleStatus('err','Web Bluetooth not supported — use Chrome or Edge over HTTPS');
+        return;
+      }
+      var btn=document.getElementById('bleConnectBtn');
+      btn.disabled=true; btn.textContent='Scanning…';
+      setBleStatus('','Scanning…');
+      try{
+        bleDevice=await navigator.bluetooth.requestDevice({ filters:[{services:[BLE_SVC]}] });
+        bleDevice.addEventListener('gattserverdisconnected', onBleDisconnect);
+        setBleStatus('','Connecting…'); btn.textContent='Connecting…';
+        var server  = await bleDevice.gatt.connect();
+        var service = await server.getPrimaryService(BLE_SVC);
+        bleCfgChar  = await service.getCharacteristic(BLE_CFG);
+        try{ bleStaChar=await service.getCharacteristic(BLE_STA); }catch(e){}
+        var raw=await bleCfgChar.readValue();
+        var cfg=JSON.parse(new TextDecoder().decode(raw));
+        bleFillForm(cfg);
+        document.getElementById('cfgForm').classList.remove('hide');
+        setBleStatus('connected','Connected · '+(bleDevice.name||'Dewvee'));
+        btn.textContent='Reconnect'; btn.disabled=false;
+      }catch(e){
+        setBleStatus('err', e.name==='NotFoundError'?'No pod selected':e.message||'Connection failed');
+        btn.textContent='Connect'; btn.disabled=false;
+      }
+    }
+    async function bleSave(){
+      if(!bleCfgChar){ setCfgSaveStat('err','Not connected'); return; }
+      var btn=document.getElementById('cfgSaveBtn');
+      btn.disabled=true; setCfgSaveStat('','Saving…');
+      var payload={
+        name:      document.getElementById('cfgName').value.trim(),
+        sampleMin: parseInt(document.getElementById('cfgSampleMin').value)||5,
+        uploadHrs: parseInt(document.getElementById('cfgUploadHrs').value)||6,
+        up:        document.getElementById('cfgUploadsEnabled').checked?1:0,
+        ssid:      document.getElementById('cfgSsid').value.trim(),
+        url:       document.getElementById('cfgUrl').value.trim()
+      };
+      var pass=document.getElementById('cfgPass').value;
+      if(pass) payload.pass=pass;
+      try{
+        var bytes=new TextEncoder().encode(JSON.stringify(payload));
+        await bleCfgChar.writeValueWithResponse(bytes);
+        await new Promise(function(r){ setTimeout(r,500); });
+        var status='saved';
+        if(bleStaChar){ try{ status=new TextDecoder().decode(await bleStaChar.readValue()); }catch(e){} }
+        if(status==='saved'){
+          setCfgSaveStat('ok','✓ Saved');
+          document.getElementById('cfgPass').value='';
+        } else {
+          setCfgSaveStat('err', status||'Unknown error');
+        }
+      }catch(e){
+        setCfgSaveStat('err', e.message||'Write failed');
+      }
+      btn.disabled=false;
+    }
+    function bleDisconnect(){
+      if(bleDevice&&bleDevice.gatt.connected) bleDevice.gatt.disconnect();
+      onBleDisconnect();
+    }
+    function openConfigView(){
+      show('config');
+      if(!navigator.bluetooth){
+        var b=document.getElementById('bleBanner');
+        b.textContent='⚠ Web Bluetooth is not available. Open this page in Chrome or Edge over HTTPS.';
+        if(b.style.display!=='block'){ b.style.display='block'; requestAnimationFrame(function(){ b.classList.add('show'); }); }
+        document.getElementById('bleConnectBtn').disabled=true;
+      }
+    }
+    document.getElementById('tileConfig').onclick    = openConfigView;
+    document.getElementById('backFromConfig').onclick= function(){ history.back(); };
+    document.getElementById('bleConnectBtn').onclick = bleConnect;
+    document.getElementById('cfgSaveBtn').onclick    = bleSave;
+    document.getElementById('bleDiscoBtn').onclick   = bleDisconnect;
 
     if('serviceWorker' in navigator){
       navigator.serviceWorker.register('./sw.js').catch(function(){});
