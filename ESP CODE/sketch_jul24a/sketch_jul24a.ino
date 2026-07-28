@@ -412,21 +412,29 @@ void runConfigMode() {
         }
       }
       WiFi.mode(WIFI_OFF);
-      // 2x green = new WiFi works and data is on the sheet
-      // 3x amber  = connected but upload failed (data still safe in buffer)
+      // Solid green = new WiFi works and data is on the sheet
+      // Solid amber  = connected but upload failed (data still safe in buffer)
+      // LED stays on until the pod goes to sleep (~10 s for magnet removal wait)
       if (uploadOk) {
-        Serial.println("Blinking green x2.");
-        ledBlink(0, 40, 0,  2, 400, 300);
+        Serial.println("Solid green - all good.");
+#ifdef RGB_BUILTIN
+        rgbLedWrite(RGB_BUILTIN, 0, 40, 0);
+#endif
       } else {
-        Serial.println("Blinking amber x3.");
-        ledBlink(40, 15, 0, 3, 300, 200);
+        Serial.println("Solid amber - WiFi OK but upload failed.");
+#ifdef RGB_BUILTIN
+        rgbLedWrite(RGB_BUILTIN, 40, 15, 0);
+#endif
       }
     } else {
       WiFi.mode(WIFI_OFF);
-      // 3x red = could not connect with the new credentials
-      Serial.println("New WiFi credentials failed - blinking red x3.");
-      ledBlink(40, 0, 0, 3, 300, 200);
+      // Solid red = could not connect with the new credentials
+      Serial.println("New WiFi credentials failed - solid red.");
+#ifdef RGB_BUILTIN
+      rgbLedWrite(RGB_BUILTIN, 40, 0, 0);
+#endif
     }
+    delay(5000);   // hold the colour for 5 s so it's easy to see
     ledOff();
   }
 }
