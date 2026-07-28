@@ -53,7 +53,7 @@
 #include <BLEUtils.h>
 
 // ------------------- DEFAULTS (used on the FIRST boot only) -------------------
-#define DEFAULT_NAME        "DEWVEE:02"
+#define DEFAULT_NAME        "DEWVEE:03"
 #define DEFAULT_SSID        "Airtel_The Liana Trust"
 #define DEFAULT_PASS        ""   // set via BLE config on first use
 #define DEFAULT_URL         "https://script.google.com/macros/s/AKfycbw88DpkYijK98qTzhlSguLAFxFRQI_H3KXreYcRp2sitSr3XWFPRz9QwR88ocdsRsO7/exec"
@@ -79,7 +79,8 @@ Preferences prefs;
 const uint32_t CONFIG_MODE_MS = 180000;   // 3 min BLE window
 BLECharacteristic* configChar = nullptr;
 BLECharacteristic* statusChar = nullptr;
-volatile bool configSaved = false;
+volatile bool configSaved     = false;
+bool          wifiCredChanged = false;   // set when SSID or password changes over BLE
 
 // --- pins ---
 const int SDA_PIN   = 6;
@@ -123,6 +124,17 @@ Adafruit_SHT4x sht = Adafruit_SHT4x();
 void ledOff() {
 #ifdef RGB_BUILTIN
   rgbLedWrite(RGB_BUILTIN, 0, 0, 0);
+#endif
+}
+
+void ledBlink(uint8_t r, uint8_t g, uint8_t b, int times, int onMs, int offMs) {
+#ifdef RGB_BUILTIN
+  for (int i = 0; i < times; i++) {
+    rgbLedWrite(RGB_BUILTIN, r, g, b);
+    delay(onMs);
+    rgbLedWrite(RGB_BUILTIN, 0, 0, 0);
+    if (i < times - 1) delay(offMs);
+  }
 #endif
 }
 
@@ -308,6 +320,9 @@ void applyConfigJson(const String& json) {
   JsonDocument doc;
   DeserializationError e = deserializeJson(doc, json);
   if (e) { if (statusChar) statusChar->setValue("error: bad json"); return; }
+
+  String oldSsid = cfg.ssid, oldPass = cfg.pass;
+
   if (!doc["name"].isNull())      cfg.name           = doc["name"].as<String>();
   if (!doc["sampleMin"].isNull()) cfg.sampleMin      = doc["sampleMin"].as<uint16_t>();
   if (!doc["uploadHrs"].isNull()) cfg.uploadHrs      = doc["uploadHrs"].as<uint16_t>();
@@ -318,6 +333,8 @@ void applyConfigJson(const String& json) {
     String p = doc["pass"].as<String>();
     if (p.length()) cfg.pass = p;
   }
+
+  if (cfg.ssid != oldSsid || cfg.pass != oldPass) wifiCredChanged = true;
   if (cfg.sampleMin < 1) cfg.sampleMin = 1;
   if (cfg.uploadHrs < 1) cfg.uploadHrs = 1;
   saveConfig();
@@ -370,6 +387,48 @@ void runConfigMode() {
   BLEDevice::deinit(true);
   ledOff();
   Serial.println("Config mode ended.");
+
+  // If WiFi credentials were changed, test the new network immediately,
+  // upload any buffered data, and blink the LED to confirm.
+  // BLE is fully shut down first so both radios never run at the same time.
+  if (wifiCredChanged) {
+    wifiCredChanged = false;
+    Serial.println("WiFi credentials changed - testing new network...");
+
+    if (connectWiFi(20000)) {
+      Serial.println("New WiFi connected.");
+      if (syncNTP(10000)) {
+        timeSynced    = true;
+        lastSyncEpoch = currentEpoch();
+      }
+      bool uploadOk = true;
+      if (bufCount > 0) {
+        uploadOk = uploadBatch();
+        if (uploadOk) {
+          bufCount = 0;
+          Serial.println("Buffer flushed on new network.");
+        } else {
+          Serial.println("Upload failed - buffer kept for next timer wake.");
+        }
+      }
+      WiFi.mode(WIFI_OFF);
+      // 2x green = new WiFi works and data is on the sheet
+      // 3x amber  = connected but upload failed (data still safe in buffer)
+      if (uploadOk) {
+        Serial.println("Blinking green x2.");
+        ledBlink(0, 40, 0,  2, 400, 300);
+      } else {
+        Serial.println("Blinking amber x3.");
+        ledBlink(40, 15, 0, 3, 300, 200);
+      }
+    } else {
+      WiFi.mode(WIFI_OFF);
+      // 3x red = could not connect with the new credentials
+      Serial.println("New WiFi credentials failed - blinking red x3.");
+      ledBlink(40, 0, 0, 3, 300, 200);
+    }
+    ledOff();
+  }
 }
 
 // ---------------- main ----------------
