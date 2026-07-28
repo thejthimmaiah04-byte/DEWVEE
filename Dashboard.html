@@ -69,7 +69,7 @@
     .seg button{ border-radius:0; border-right:none; color:var(--muted); }
     .seg button:first-child{ border-radius:9px 0 0 9px; }
     .seg button:last-child{ border-radius:0 9px 9px 0; border-right:1px solid var(--line); }
-    .seg button.on{ color:var(--ink); background:rgba(255,255,255,.06); }
+    .seg button.on{ color:var(--ink); background:rgba(255,255,255,.06); font-weight:700; }
     main{ padding:0 20px 40px; max-width:1080px; margin:0 auto; }
     .banner{ background:rgba(229,72,77,.12); border:1px solid rgba(229,72,77,.35);
              color:#ff9ea0; padding:10px 14px; border-radius:11px; margin-bottom:18px;
@@ -101,7 +101,7 @@
     .cardDot.on{ width:16px; background:var(--muted); }
     .card:active{ transform:scale(.97); }
     .card.sel{ border-color:rgba(255,255,255,.28); }
-    .card.dim{ opacity:.45; }
+    .card.dim{ opacity:.32; }
     .card .tval, .card .hval, .card .bval, .astat b{ font-variant-numeric:tabular-nums; }
     .card .cardtop{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:11px; }
     .card .name{ font-weight:600; font-size:12.5px; display:flex; align-items:center; gap:7px; min-width:0; }
@@ -145,8 +145,10 @@
     .devLegendDot{ width:8px; height:8px; border-radius:50%; flex:none; }
     .devLegendLine{ border-radius:2px; flex:none; background:var(--muted); opacity:.55; width:18px; }
     .chartwrap{ position:relative; width:100%; height:clamp(240px,46vh,560px); }
-    .chartwrap canvas{ position:absolute; inset:0; width:100% !important; height:100% !important; }
-    .hint{ color:var(--muted); font-size:12px; text-align:center; padding:14px 6px 2px; }
+    .chartwrap canvas{ position:absolute; inset:0; width:100% !important; height:100% !important; touch-action:none; }
+    @keyframes hintFade{ to{ opacity:0; pointer-events:none; } }
+    .hint{ color:var(--muted); font-size:12px; text-align:center; padding:14px 6px 2px;
+           animation:hintFade 1.5s 10s forwards; }
 
     /* card / analytics-card entrance */
     @keyframes riseIn{ from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none} }
@@ -227,7 +229,8 @@
     #dash .brand h1{ font-size:23px; }
     .iconbtn{ display:inline-flex; align-items:center; justify-content:center;
               padding:7px 9px; line-height:0; }
-    .updated{ color:var(--muted); font-size:12px; }
+    .updated{ color:var(--muted); font-size:11px; }
+    .updatedRow{ text-align:right; padding:3px 0 6px; min-height:18px; }
 
     /* analytics */
     .asection{ margin-top:22px; }
@@ -239,10 +242,14 @@
     .acard .aname{ font-weight:600; font-size:13px; display:flex; align-items:center; gap:7px; margin-bottom:12px; }
     .arow{ display:flex; align-items:center; gap:8px; margin:9px 0; }
     .arow .alabel{ font-size:12px; color:var(--muted); width:120px; flex:none; }
+    .alabel .short{ display:none; }
+    @media(max-width:520px){ .alabel .full{ display:none; } .alabel .short{ display:inline; } .arow .alabel{ width:70px; } }
     .astat{ flex:1; text-align:center; }
     .astat b{ display:block; font-size:15px; font-weight:700; line-height:1.2; }
     .astat i{ display:block; font-size:9.5px; color:var(--muted); font-style:normal;
               text-transform:uppercase; letter-spacing:.05em; margin-top:1px; }
+    .atime{ display:block; font-size:9px; color:var(--muted); opacity:.7;
+            margin-top:2px; font-weight:500; white-space:nowrap; }
 
     /* export modal */
     .modalOverlay{ display:none; position:fixed; inset:0; z-index:60;
@@ -278,9 +285,10 @@
     .podChip{ display:inline-flex; align-items:center; gap:7px; font:inherit; font-size:13px;
               font-weight:600; padding:7px 14px; border-radius:20px; cursor:pointer;
               background:var(--card); border:1px solid var(--line); color:var(--muted);
-              box-shadow:var(--sh-1); transition:.15s; }
+              box-shadow:var(--sh-1); transition:opacity .2s ease, border-color .15s, color .15s; }
     .podChip:hover{ border-color:rgba(128,128,128,.35); color:var(--ink); }
     .podChip.on{ color:var(--ink); border-color:rgba(255,255,255,.28); background:var(--card); }
+    .podChip.dim{ opacity:.32; }
     .podChip .chipDot{ width:8px; height:8px; border-radius:50%; flex:none; }
 
     /* compare feature */
@@ -408,6 +416,66 @@
     .cfgSaveStat.ok{ color:var(--good); } .cfgSaveStat.err{ color:var(--bad); }
     .cfgNote{ color:var(--muted); font-size:11px; text-align:center;
               margin-top:20px; line-height:1.55; }
+
+    /* ── auto export view ── */
+    .aexSection{ margin-bottom:22px; }
+    .aexSectionLabel{ font-size:11px; font-weight:700; color:var(--muted);
+                      text-transform:uppercase; letter-spacing:.06em; margin:0 0 8px 2px; }
+    .aexScheduleCard{ background:var(--card); border:1px solid var(--line);
+                      border-radius:16px; overflow:hidden; box-shadow:var(--sh-1); }
+    .aexRow{ display:flex; align-items:center; gap:14px; padding:14px 16px;
+             border-bottom:1px solid var(--line); cursor:pointer; margin:0; user-select:none; }
+    .aexRow:last-of-type{ border-bottom:none; }
+    .aexCb{ position:absolute; opacity:0; width:0; height:0; pointer-events:none; }
+    .aexCbBox{ width:22px; height:22px; border-radius:7px; border:1.5px solid var(--line);
+               background:var(--bg); display:flex; align-items:center; justify-content:center;
+               flex:none; transition:background .15s, border-color .15s; }
+    .aexCbBox svg{ opacity:0; transform:scale(.7); transition:opacity .12s, transform .12s; }
+    .aexCb:checked + .aexCbBox{ background:var(--hum); border-color:var(--hum); }
+    .aexCb:checked + .aexCbBox svg{ opacity:1; transform:scale(1); }
+    .aexRowText{ flex:1; }
+    .aexRowTitle{ display:block; font-size:14px; font-weight:600; line-height:1.3; }
+    .aexRowSub{ display:block; font-size:12px; color:var(--muted); margin-top:2px; }
+    .aexDatePickerRow{ padding:0 16px 14px 52px; display:none; }
+    .aexDatePickerRow.show{ display:block; }
+    .aexDateInput{ font:inherit; font-size:14px; color:var(--ink); background:var(--bg);
+                   border:1px solid var(--line); border-radius:9px; padding:9px 11px;
+                   box-sizing:border-box; transition:border-color .15s; width:100%; max-width:220px; }
+    .aexDateInput:focus{ outline:none; border-color:rgba(91,140,255,.55); }
+    .aexSaveRow{ display:flex; align-items:center; gap:14px; margin-top:8px; }
+    .aexNote{ color:var(--muted); font-size:11px; line-height:1.6; margin-top:20px; }
+    .aexEmailWrap{ background:var(--card); border:1px solid var(--line); border-radius:14px; overflow:hidden; }
+    .aexEmailChips{ display:flex; flex-wrap:wrap; gap:7px; padding:12px 14px 0; min-height:0; }
+    .aexEmailChips:empty{ padding:0; }
+    .aexEmailChip{ display:inline-flex; align-items:center; gap:6px; background:rgba(91,140,255,.12); border:1px solid rgba(91,140,255,.25); border-radius:20px; padding:4px 10px 4px 12px; font-size:12px; font-weight:600; color:var(--ink); }
+    .aexEmailChipX{ background:none; border:none; padding:0; margin:0; cursor:pointer; color:var(--muted); line-height:1; display:flex; align-items:center; border-radius:50%; width:16px; height:16px; justify-content:center; }
+    .aexEmailChipX:hover{ color:var(--bad); }
+    .aexEmailAddRow{ display:flex; align-items:center; gap:0; padding:10px 12px 12px; }
+    .aexEmailAddRow input{ flex:1; font:inherit; font-size:14px; color:var(--ink); background:transparent; border:1px solid var(--line); border-radius:9px; padding:9px 11px; box-sizing:border-box; transition:border-color .15s; }
+    .aexEmailAddRow input:focus{ outline:none; border-color:rgba(91,140,255,.55); }
+    .aexEmailAddBtn{ flex:none; width:36px; height:36px; margin-left:8px; border-radius:9px; border:none; background:var(--hum); color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:opacity .15s; }
+    .aexEmailAddBtn:hover{ opacity:.82; }
+    .aexEmailAddBtn:active{ opacity:.65; }
+    .aexNote code{ font-family:inherit; background:var(--line); border-radius:4px; padding:1px 5px; font-size:10.5px; }
+
+    /* ── compare hover tooltip ── */
+    .cmpTooltip{ position:fixed; z-index:30; background:var(--card); border:1px solid var(--line);
+                 border-radius:14px; padding:12px 16px; pointer-events:none; box-shadow:var(--sh-2);
+                 min-width:150px; }
+    .cmpTooltip.hide{ display:none; }
+    .cmpTipTime{ font-size:10px; font-weight:700; color:var(--muted); text-transform:uppercase;
+                 letter-spacing:.07em; padding-bottom:8px; margin-bottom:8px;
+                 border-bottom:1px solid var(--line); }
+    .cmpTipRow{ display:flex; align-items:center; gap:8px; padding:3px 0; }
+    .cmpTipDivider{ height:1px; background:var(--line); margin:4px 0; }
+    .cmpTipDot{ width:8px; height:8px; border-radius:50%; flex:none; }
+    .cmpTipName{ font-size:12px; font-weight:700; flex:1; min-width:0;
+                 overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .cmpTipTemp{ font-size:13px; font-weight:700; white-space:nowrap; }
+    .cmpTipHum{ font-size:12px; font-weight:600; color:var(--hum); padding-left:5px; white-space:nowrap; }
+    .cmpTipCmpRow{ display:flex; align-items:center; gap:8px; padding:1px 0 3px 16px; opacity:.55; }
+    .cmpTipLabel{ font-size:10px; font-weight:700; color:var(--muted); font-style:italic;
+                  width:14px; flex:none; }
   </style>
 </head>
 <body>
@@ -472,12 +540,23 @@
         <div class="tname">Configure</div>
         <div class="tsub">Name, WiFi &amp; intervals via Bluetooth</div>
       </button>
+      <button class="tile" id="tileAutoExport">
+        <svg class="ticon" viewBox="0 0 46 46" fill="none" aria-hidden="true">
+          <defs><linearGradient id="aexTG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3ecf8e"/><stop offset="1" stop-color="#5b8cff"/></linearGradient></defs>
+          <rect x="4" y="13" width="28" height="20" rx="4" stroke="url(#aexTG)" stroke-width="2"/>
+          <path d="M4 19l14 8 14-8" stroke="url(#aexTG)" stroke-width="2" stroke-linejoin="round"/>
+          <circle cx="36" cy="15" r="7" fill="none" stroke="url(#aexTG)" stroke-width="2"/>
+          <path d="M36 12v3.5l2 1.2" stroke="url(#aexTG)" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+        <div class="tname">Auto Export</div>
+        <div class="tsub">Scheduled CSV &amp; chart by email</div>
+      </button>
     </div>
   </div>
 
   <div id="dash" class="view">
   <header>
-    <button class="back" id="backHome" aria-label="Back to home">‹ Home</button>
+    <button class="back" id="backHome" aria-label="Back to home"><svg width="7" height="11" viewBox="0 0 7 11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 1L1 5.5 6 10"/></svg>Home</button>
     <div class="brand">
       <svg class="logo" viewBox="0 0 64 64" role="img" aria-label="Dewvee">
         <defs>
@@ -502,13 +581,13 @@
         <button data-r="all">All</button>
       </div>
       <span class="spacer"></span>
-      <span class="updated" id="updated"></span>
       <button class="iconbtn" id="exportBtn" aria-label="Export CSV">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 19h16"/></svg>
       </button>
       <button class="iconbtn themeToggle" aria-label="Toggle light/dark theme"></button>
       <button class="iconbtn" id="refresh" aria-label="Refresh">↻</button>
     </div>
+    <div class="updatedRow"><span class="updated" id="updated"></span></div>
   </header>
 
   <main>
@@ -557,7 +636,7 @@
   <!-- ═══════════════ COMPARE VIEW ═══════════════ -->
   <div id="compare" class="view">
   <header>
-    <button class="back" id="backFromCompare">‹ Home</button>
+    <button class="back" id="backFromCompare"><svg width="7" height="11" viewBox="0 0 7 11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 1L1 5.5 6 10"/></svg>Home</button>
     <div class="brand">
       <svg class="logo" viewBox="0 0 64 64" role="img" aria-label="Dewvee">
         <defs>
@@ -611,6 +690,7 @@
       <div class="chartwrap"><canvas id="cmpChart"></canvas></div>
       <div class="cmpBadge hide" id="cmpBadge" style="font-size:11px;color:var(--muted);padding:6px 2px 2px"></div>
     </div>
+    <div id="cmpTooltip" class="cmpTooltip hide"></div>
     <div class="hint">Select Dewvees above · pinch to zoom · drag to pan</div>
   </main>
   </div>
@@ -618,7 +698,7 @@
   <!-- ═══════════════ CONFIG VIEW ═══════════════ -->
   <div id="config" class="view">
   <header>
-    <button class="back" id="backFromConfig">‹ Home</button>
+    <button class="back" id="backFromConfig"><svg width="7" height="11" viewBox="0 0 7 11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 1L1 5.5 6 10"/></svg>Home</button>
     <div class="brand">
       <svg class="logo" viewBox="0 0 64 64" role="img" aria-label="Dewvee">
         <defs>
@@ -702,7 +782,88 @@
       (GitHub Pages works — local file:// does not)</p>
   </main>
   </div>
+
+  <!-- ═══════════════ AUTO EXPORT VIEW ═══════════════ -->
+  <div id="autoexport" class="view">
+  <header>
+    <button class="back" id="backFromAutoExport"><svg width="7" height="11" viewBox="0 0 7 11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 1L1 5.5 6 10"/></svg>Home</button>
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 64 64" role="img" aria-label="Dewvee">
+        <defs>
+          <linearGradient id="aexBrandG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f0a54e"/><stop offset="1" stop-color="#5b8cff"/></linearGradient>
+          <clipPath id="aexBrandC"><path d="M32 6 C32 6 16 30 16 42 A16 16 0 1 0 48 42 C48 30 32 6 32 6 Z"/></clipPath>
+        </defs>
+        <path d="M32 6 C32 6 16 30 16 42 A16 16 0 1 0 48 42 C48 30 32 6 32 6 Z" fill="url(#aexBrandG)"/>
+        <g clip-path="url(#aexBrandC)"><path d="M17 42 L24 36 L30 40 L37 30 L44 35 L50 28" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></g>
+      </svg>
+      <div><h1>Auto Export</h1></div>
+    </div>
+    <div class="row"><span class="spacer"></span><button class="iconbtn themeToggle" aria-label="Toggle light/dark theme"></button></div>
+  </header>
+  <main>
+    <div class="banner" id="aexBanner"></div>
+
+    <div class="aexSection">
+      <p class="aexSectionLabel">Send report to</p>
+      <div class="aexEmailWrap">
+        <div class="aexEmailChips" id="aexEmailChips"></div>
+        <div class="aexEmailAddRow">
+          <input type="email" id="aexEmailInput" placeholder="Add email address…" autocomplete="email">
+          <button class="aexEmailAddBtn" id="aexEmailAddBtn" aria-label="Add email">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="aexSection">
+      <p class="aexSectionLabel">Schedule — tick one or more</p>
+      <div class="aexScheduleCard">
+        <label class="aexRow">
+          <input type="checkbox" id="aexWeekly" class="aexCb">
+          <span class="aexCbBox"><svg width="12" height="9" viewBox="0 0 12 9" fill="none"><path d="M1 4l3.5 3.5L11 1" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <span class="aexRowText"><span class="aexRowTitle">Weekly</span><span class="aexRowSub">Every Sunday at 23:59</span></span>
+        </label>
+        <label class="aexRow">
+          <input type="checkbox" id="aexMonthly" class="aexCb">
+          <span class="aexCbBox"><svg width="12" height="9" viewBox="0 0 12 9" fill="none"><path d="M1 4l3.5 3.5L11 1" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <span class="aexRowText"><span class="aexRowTitle">Monthly</span><span class="aexRowSub">Last day of each month at 23:59</span></span>
+        </label>
+        <label class="aexRow">
+          <input type="checkbox" id="aexYearly" class="aexCb">
+          <span class="aexCbBox"><svg width="12" height="9" viewBox="0 0 12 9" fill="none"><path d="M1 4l3.5 3.5L11 1" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <span class="aexRowText"><span class="aexRowTitle">Yearly</span><span class="aexRowSub">31 December at 23:59</span></span>
+        </label>
+        <label class="aexRow">
+          <input type="checkbox" id="aexOnce" class="aexCb">
+          <span class="aexCbBox"><svg width="12" height="9" viewBox="0 0 12 9" fill="none"><path d="M1 4l3.5 3.5L11 1" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <span class="aexRowText"><span class="aexRowTitle">One-time date</span><span class="aexRowSub">Send once on a specific day, then clears automatically</span></span>
+        </label>
+        <div class="aexDatePickerRow" id="aexDatePickerRow">
+          <input type="date" id="aexOnceDate" class="aexDateInput">
+        </div>
+      </div>
+    </div>
+
+    <div class="aexSection">
+      <p class="aexSectionLabel">Include Dewvees</p>
+      <div class="podChips" id="aexChips"><span style="color:var(--muted);font-size:13px">Loading…</span></div>
+    </div>
+
+    <div class="aexSaveRow">
+      <button class="bleBtn" id="aexSaveBtn">Save Schedule</button>
+      <span class="cfgSaveStat" id="aexSaveStat"></span>
+    </div>
+
+    <p class="aexNote">
+      Reports are emailed from your Google Sheet — paste the <code>dewveeScheduledExport</code> function
+      into your Apps Script and re-deploy the web app. Email delivery may be up to 15 minutes late
+      due to Google's trigger timing.
+    </p>
+  </main>
   </div>
+
+  </div><!-- /#views -->
 
   <div class="modalOverlay" id="exportOverlay">
     <div class="modal">
@@ -878,6 +1039,10 @@
         var pc=args[0]||{};
         url=API_URL+'?action=compare&from='+encodeURIComponent(pc.from)+'&to='+encodeURIComponent(pc.to)+
             (pc.devices?'&devices='+encodeURIComponent(pc.devices):'');
+      } else if(fn==='getExportSettings'){
+        url=API_URL+'?action=getExportSettings';
+      } else if(fn==='setExportSettings'){
+        url=API_URL+'?action=setExportSettings&data='+encodeURIComponent(JSON.stringify(args[0]||{}));
       } else return Promise.reject(new Error('unknown call '+fn));
       return fetch(url,{redirect:'follow'}).then(function(r){
         if(!r.ok) throw new Error('HTTP '+r.status);
@@ -922,11 +1087,14 @@
       requestAnimationFrame(tick);
     }
 
+    function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    function dot(color){ return '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:'+color+';vertical-align:2px;margin-right:6px;flex:none"></span>'; }
+
     // slide-in/out banner instead of a blunt display toggle
     function setBanner(msg){
       var b=document.getElementById('banner');
       if(msg){
-        b.textContent=msg;
+        b.innerHTML=msg;
         if(b.style.display!=='block'){ b.style.display='block'; requestAnimationFrame(function(){ b.classList.add('show'); }); }
         else b.classList.add('show');
       } else if(b.classList.contains('show')){
@@ -994,9 +1162,9 @@
       var low=info.devices.filter(function(d){return d.lowBatt;});
       var off=info.devices.filter(function(d){return !d.online;});
       var msgs=[];
-      if(low.length) msgs.push('🔋 Low battery: '+low.map(function(d){return d.device+' ('+d.pct+'%)';}).join(', '));
-      if(off.length) msgs.push('📴 Offline: '+off.map(function(d){return d.device;}).join(', '));
-      setBanner(msgs.length?msgs.join('    •    '):null);
+      if(low.length) msgs.push(dot('var(--warn)')+'Low battery: '+low.map(function(d){return esc(d.device)+' ('+d.pct+'%)';}).join(', '));
+      if(off.length) msgs.push(dot('var(--bad)')+'Offline: '+off.map(function(d){return esc(d.device);}).join(', '));
+      setBanner(msgs.length?msgs.join('<span style="opacity:.4;margin:0 10px">·</span>'):null);
 
       var host=document.getElementById('cards');
       // clear any skeleton placeholders left over from the first-load state -
@@ -1254,7 +1422,7 @@
           }},
           zoom:{
             pan:{ enabled:true, mode:'x', onPanComplete:function(){ toggleResetLink(true); } },
-            zoom:{ wheel:{enabled:false}, pinch:{enabled:true}, mode:'x', onZoomComplete:function(){ toggleResetLink(true); } }
+            zoom:{ wheel:{enabled:true, modifierKey:'ctrl'}, pinch:{enabled:true}, mode:'x', onZoomComplete:function(){ toggleResetLink(true); } }
           }
         }
       };
@@ -1322,7 +1490,7 @@
           } },
           zoom:{
             pan:{ enabled:true, mode:'x', onPanComplete:function(){ toggleResetLink(true); } },
-            zoom:{ wheel:{enabled:false}, pinch:{enabled:true}, mode:'x', onZoomComplete:function(){ toggleResetLink(true); } }
+            zoom:{ wheel:{enabled:true, modifierKey:'ctrl'}, pinch:{enabled:true}, mode:'x', onZoomComplete:function(){ toggleResetLink(true); } }
           }
         }
       };
@@ -1395,20 +1563,32 @@
 
     // ---- analytics: low / avg / high over the current range & selection ----
     var RANGE_LABEL={day:'last 24 hours',week:'last 7 days',month:'last 30 days',year:'last year',all:'all time'};
-    function stat(arr){
-      var v=arr.filter(function(x){return x!=null && !isNaN(x);});
+    function fmtAnalyticsTime(ms){
+      var d=new Date(ms), r=state.range;
+      if(r==='day')   return d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+      if(r==='week')  return d.toLocaleDateString([],{weekday:'short'})+' '+d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+      if(r==='month') return d.toLocaleDateString([],{month:'short',day:'numeric'});
+      return d.toLocaleDateString([],{month:'short',day:'numeric'});
+    }
+    function stat(pairs){
+      var v=pairs.filter(function(x){return x!=null && x.v!=null && !isNaN(x.v);});
       if(!v.length) return null;
-      var min=v[0],max=v[0],sum=0;
-      for(var i=0;i<v.length;i++){ if(v[i]<min)min=v[i]; if(v[i]>max)max=v[i]; sum+=v[i]; }
-      return {min:min,max:max,avg:sum/v.length};
+      var mn=v[0].v, mx=v[0].v, sum=0, mnT=v[0].t, mxT=v[0].t;
+      for(var i=0;i<v.length;i++){
+        if(v[i].v<mn){ mn=v[i].v; mnT=v[i].t; }
+        if(v[i].v>mx){ mx=v[i].v; mxT=v[i].t; }
+        sum+=v[i].v;
+      }
+      return {min:mn, minT:mnT, max:mx, maxT:mxT, avg:sum/v.length};
     }
     function aRow(label,s,u,dec){
       if(!s) return '<div class="arow"><span class="alabel">'+label+'</span><span class="astat"><b>—</b></span></div>';
       function f(x){ return x.toFixed(dec)+u; }
+      function ts(t){ return t!=null?'<span class="atime">'+fmtAnalyticsTime(t)+'</span>':''; }
       return '<div class="arow"><span class="alabel">'+label+'</span>'+
-        '<span class="astat"><b>'+f(s.min)+'</b><i>low</i></span>'+
+        '<span class="astat"><b>'+f(s.min)+'</b><i>low</i>'+ts(s.minT)+'</span>'+
         '<span class="astat"><b>'+f(s.avg)+'</b><i>avg</i></span>'+
-        '<span class="astat"><b>'+f(s.max)+'</b><i>high</i></span></div>';
+        '<span class="astat"><b>'+f(s.max)+'</b><i>high</i>'+ts(s.maxT)+'</span></div>';
     }
     function renderAnalytics(series){
       var host=document.getElementById('analytics'); if(!host) return;
@@ -1418,12 +1598,12 @@
       var html='';
       keys.forEach(function(dev, idx){
         var pts=series[dev];
-        var ts=stat(pts.map(function(p){return p.temp;}));
-        var hs=stat(pts.map(function(p){return p.hum;}));
+        var ts=stat(pts.map(function(p){return {v:p.temp, t:p.t};}));
+        var hs=stat(pts.map(function(p){return {v:p.hum,  t:p.t};}));
         html+='<div class="acard enter" style="animation-delay:'+(idx*40)+'ms">'+
           '<div class="aname"><span class="dot adot" data-dev="'+dev.replace(/&/g,'&amp;').replace(/"/g,'&quot;')+'" style="background:'+color(dev)+'"></span>'+dev+'</div>'+
           aRow('Temperature',ts,'°',1)+
-          aRow('Relative humidity',hs,'%',0)+
+          aRow('<span class="full">Relative humidity</span><span class="short">Humidity</span>',hs,'%',0)+
         '</div>';
       });
       host.innerHTML=html;
@@ -1549,7 +1729,7 @@
     // mid-transition - the incoming view is already normal-flow from frame
     // one, so its size/layout is correct immediately.
     function show(name){
-      ['home','dash','compare','config'].forEach(function(v){
+      ['home','dash','compare','config','autoexport'].forEach(function(v){
         var el=document.getElementById(v);
         if(v===name){
           el.classList.remove('leaving');
@@ -1603,6 +1783,63 @@
                          metrics:{temp:true,hum:true}, compare:null };
     var cmpChart;
 
+    function cmpTooltipExternal(ctx){
+      var el=document.getElementById('cmpTooltip');
+      if(!el) return;
+      var model=ctx.tooltip;
+      if(!model || model.opacity===0 || !(model.dataPoints&&model.dataPoints.length)){
+        el.classList.add('hide'); return;
+      }
+
+      // Group data points by device, separating current vs comparison period
+      var byDev={}, order=[];
+      model.dataPoints.forEach(function(item){
+        var ds=item.dataset, dev=ds._podDev;
+        if(!dev) return;
+        if(!byDev[dev]){ byDev[dev]={clr:ds._devIdentityColor||'#aaa',t:null,h:null,ct:null,ch:null}; order.push(dev); }
+        var y=item.parsed.y;
+        if(!ds._isCmp){ if(ds._isHum) byDev[dev].h=y; else byDev[dev].t=y; }
+        else           { if(ds._isHum) byDev[dev].ch=y; else byDev[dev].ct=y; }
+      });
+      if(!order.length){ el.classList.add('hide'); return; }
+
+      var timeX=model.dataPoints[0].parsed.x;
+      var hasCmp=order.some(function(d){ return byDev[d].ct!=null||byDev[d].ch!=null; });
+      var showT=cmpViewState.metrics.temp, showH=cmpViewState.metrics.hum;
+
+      var html='<div class="cmpTipTime">'+fmtRel(timeX,cmpViewState.range)+'</div>';
+      order.forEach(function(dev,i){
+        var d=byDev[dev];
+        html+='<div class="cmpTipRow">'+
+          '<span class="cmpTipDot" style="background:'+d.clr+'"></span>'+
+          '<span class="cmpTipName">'+esc(dev)+'</span>';
+        if(showT) html+='<span class="cmpTipTemp">'+(d.t!=null?d.t.toFixed(1)+'°':'—')+'</span>';
+        if(showH) html+='<span class="cmpTipHum">'+(d.h!=null?d.h.toFixed(0)+'%':'—')+'</span>';
+        html+='</div>';
+        if(hasCmp){
+          html+='<div class="cmpTipCmpRow"><span class="cmpTipLabel">vs</span>';
+          if(showT) html+='<span class="cmpTipTemp">'+(d.ct!=null?d.ct.toFixed(1)+'°':'—')+'</span>';
+          if(showH) html+='<span class="cmpTipHum">'+(d.ch!=null?d.ch.toFixed(0)+'%':'—')+'</span>';
+          html+='</div>';
+        }
+        if(i<order.length-1) html+='<div class="cmpTipDivider"></div>';
+      });
+
+      el.innerHTML=html;
+      el.classList.remove('hide');
+
+      // Position: right of crosshair normally, flip left when near the right edge
+      var rect=ctx.chart.canvas.getBoundingClientRect();
+      var ca=ctx.chart.chartArea;
+      var flipLeft=model.caretX>(ca.left+ca.right)/2;
+      var TIP_W=el.offsetWidth||180;
+      var left=flipLeft
+        ? rect.left+model.caretX-TIP_W-14
+        : rect.left+model.caretX+14;
+      el.style.left=Math.max(8,left)+'px';
+      el.style.top=(rect.top+ca.top+10)+'px';
+    }
+
     function cmpOptions(){
       var c=themeColors();
       return {
@@ -1623,16 +1860,10 @@
         },
         plugins:{
           legend:{ display:false },
-          tooltip:{ callbacks:{
-            title:function(it){ return fmtRel(it[0].parsed.x, cmpViewState.range); },
-            label:function(ctx){
-              var hum=ctx.dataset.yAxisID==='yHum';
-              return ctx.dataset.label+': '+ctx.parsed.y.toFixed(hum?1:2)+(hum?'%':'°C');
-            }
-          }},
+          tooltip:{ enabled:false, external:cmpTooltipExternal },
           zoom:{
             pan:{ enabled:true, mode:'x', onPanComplete:function(){ toggleCmpResetLink(true); } },
-            zoom:{ wheel:{enabled:false}, pinch:{enabled:true}, mode:'x', onZoomComplete:function(){ toggleCmpResetLink(true); } }
+            zoom:{ wheel:{enabled:true, modifierKey:'ctrl'}, pinch:{enabled:true}, mode:'x', onZoomComplete:function(){ toggleCmpResetLink(true); } }
           }
         }
       };
@@ -1656,20 +1887,30 @@
     addDoubleTapReset('chart',    function(){ return chart; },    toggleResetLink);
     addDoubleTapReset('cmpChart', function(){ return cmpChart; }, toggleCmpResetLink);
 
+    function syncCmpChipStates(){
+      document.querySelectorAll('#cmpChips .podChip').forEach(function(c){
+        var dev=c.getAttribute('data-dev');
+        var sel=cmpViewState.selected.has(dev);
+        c.classList.toggle('on', sel);
+        c.classList.toggle('dim', !sel);
+      });
+    }
     function renderCmpChips(){
       var host=document.getElementById('cmpChips'); host.innerHTML='';
       cmpViewState.devices.forEach(function(d){
         var chip=document.createElement('button');
-        chip.className='podChip'+(cmpViewState.selected.has(d.device)?' on':'');
+        var sel=cmpViewState.selected.has(d.device);
+        chip.className='podChip'+(sel?' on':' dim');
+        chip.setAttribute('data-dev', d.device);
         chip.innerHTML='<span class="chipDot" style="background:'+color(d.device)+'"></span>'+d.device;
         chip.onclick=function(){
           if(cmpViewState.selected.has(d.device)){
-            if(cmpViewState.selected.size===1) return; // keep at least one
+            if(cmpViewState.selected.size===1) return;
             cmpViewState.selected.delete(d.device);
           } else {
             cmpViewState.selected.add(d.device);
           }
-          chip.classList.toggle('on', cmpViewState.selected.has(d.device));
+          syncCmpChipStates();
           loadCmpData();
         };
         host.appendChild(chip);
@@ -1759,7 +2000,13 @@
     }
 
     document.getElementById('tileCompare').onclick=openCompareView;
-    document.getElementById('backFromCompare').onclick=function(){ history.back(); };
+    document.getElementById('backFromCompare').onclick=function(){
+      var t=document.getElementById('cmpTooltip'); if(t) t.classList.add('hide');
+      history.back();
+    };
+    document.getElementById('cmpChart').addEventListener('mouseleave', function(){
+      var t=document.getElementById('cmpTooltip'); if(t) t.classList.add('hide');
+    });
     document.getElementById('cmpResetZoom').onclick=function(){ if(cmpChart) cmpChart.resetZoom(); toggleCmpResetLink(false); };
 
     document.getElementById('cmpRanges').addEventListener('click',function(e){
@@ -2011,6 +2258,155 @@
     document.getElementById('bleConnectBtn').onclick = bleConnect;
     document.getElementById('cfgSaveBtn').onclick    = bleSave;
     document.getElementById('bleDiscoBtn').onclick   = bleDisconnect;
+
+    // ════════════════════════════════════════════════════
+    //  AUTO EXPORT VIEW
+    // ════════════════════════════════════════════════════
+    var aexDevices = [];
+    var aexEmails  = [];
+
+    function renderAexEmailChips(){
+      var wrap=document.getElementById('aexEmailChips');
+      wrap.innerHTML='';
+      aexEmails.forEach(function(em,i){
+        var chip=document.createElement('span');
+        chip.className='aexEmailChip';
+        chip.innerHTML=esc(em)+
+          '<button class="aexEmailChipX" aria-label="Remove '+esc(em)+'" data-i="'+i+'">'+
+          '<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>';
+        chip.querySelector('.aexEmailChipX').onclick=function(){
+          aexEmails.splice(+this.getAttribute('data-i'),1);
+          renderAexEmailChips();
+        };
+        wrap.appendChild(chip);
+      });
+    }
+
+    function aexAddEmail(){
+      var inp=document.getElementById('aexEmailInput');
+      var val=inp.value.trim().toLowerCase();
+      if(!val) return;
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)){
+        inp.style.borderColor='var(--bad)';
+        setTimeout(function(){ inp.style.borderColor=''; },1200);
+        return;
+      }
+      if(aexEmails.indexOf(val)<0){ aexEmails.push(val); renderAexEmailChips(); }
+      inp.value='';
+      inp.focus();
+    }
+
+    document.getElementById('aexEmailAddBtn').onclick=aexAddEmail;
+    document.getElementById('aexEmailInput').addEventListener('keydown',function(ev){
+      if(ev.key==='Enter'||ev.key===','){ ev.preventDefault(); aexAddEmail(); }
+    });
+
+    function renderAexChips(devices, selectedSet){
+      var host=document.getElementById('aexChips');
+      if(!host) return;
+      host.innerHTML='';
+      if(!devices.length){ host.innerHTML='<span style="color:var(--muted);font-size:13px">No Dewvees found.</span>'; return; }
+      devices.forEach(function(d){
+        var chip=document.createElement('button');
+        var sel=selectedSet.has(d.device);
+        chip.className='podChip'+(sel?' on':' dim');
+        chip.setAttribute('data-dev',d.device);
+        chip.innerHTML='<span class="chipDot" style="background:'+color(d.device)+'"></span>'+d.device;
+        chip.onclick=function(){
+          var on=chip.classList.contains('on');
+          chip.classList.toggle('on',!on);
+          chip.classList.toggle('dim',on);
+        };
+        host.appendChild(chip);
+      });
+    }
+
+    function aexSelectedDevices(){
+      var sel=[];
+      document.querySelectorAll('#aexChips .podChip.on').forEach(function(c){ sel.push(c.getAttribute('data-dev')); });
+      return sel;
+    }
+
+    function setAexSaveStat(cls, msg){
+      var el=document.getElementById('aexSaveStat');
+      el.className='cfgSaveStat'+(cls?' '+cls:'');
+      el.textContent=msg||'';
+    }
+
+    async function openAutoExportView(){
+      show('autoexport');
+      setAexSaveStat('','');
+
+      // Load devices
+      if(!aexDevices.length){
+        try{
+          var info=await gcall('getDevices');
+          aexDevices=info.devices||[];
+        }catch(e){ aexDevices=[]; }
+      }
+
+      // Load saved settings
+      var s={};
+      try{ s=await gcall('getExportSettings'); }catch(e){}
+
+      // Populate form
+      aexEmails = Array.isArray(s.emails) ? s.emails.slice() : (s.email ? [s.email] : []);
+      renderAexEmailChips();
+      document.getElementById('aexEmailInput').value  = '';
+      document.getElementById('aexWeekly').checked    = !!s.weekly;
+      document.getElementById('aexMonthly').checked   = !!s.monthly;
+      document.getElementById('aexYearly').checked    = !!s.yearly;
+      document.getElementById('aexOnce').checked      = !!(s.onceDate);
+      if(s.onceDate) document.getElementById('aexOnceDate').value=s.onceDate;
+      document.getElementById('aexDatePickerRow').classList.toggle('show',!!(s.onceDate));
+
+      // Default: all devices selected
+      var sel=new Set(s.devices && s.devices.length ? s.devices : aexDevices.map(function(d){return d.device;}));
+      renderAexChips(aexDevices, sel);
+    }
+
+    async function saveAexSettings(){
+      var btn=document.getElementById('aexSaveBtn');
+      btn.disabled=true;
+      setAexSaveStat('','Saving…');
+
+      var onceChecked=document.getElementById('aexOnce').checked;
+      var onceDate=onceChecked?document.getElementById('aexOnceDate').value:'';
+      var devs=aexSelectedDevices();
+
+      var settings={
+        emails:  aexEmails.slice(),
+        weekly:  document.getElementById('aexWeekly').checked,
+        monthly: document.getElementById('aexMonthly').checked,
+        yearly:  document.getElementById('aexYearly').checked,
+        onceDate: onceDate,
+        devices: devs
+      };
+
+      if(!settings.emails.length){
+        setAexSaveStat('err','Add at least one email address first.');
+        btn.disabled=false; return;
+      }
+      if(!settings.weekly && !settings.monthly && !settings.yearly && !settings.onceDate){
+        setAexSaveStat('err','Select at least one schedule option.');
+        btn.disabled=false; return;
+      }
+
+      try{
+        await gcall('setExportSettings', settings);
+        setAexSaveStat('ok','✓ Saved');
+      }catch(e){
+        setAexSaveStat('err','Failed — check your Apps Script deployment.');
+      }
+      btn.disabled=false;
+    }
+
+    document.getElementById('aexOnce').addEventListener('change', function(){
+      document.getElementById('aexDatePickerRow').classList.toggle('show', this.checked);
+    });
+    document.getElementById('aexSaveBtn').onclick    = saveAexSettings;
+    document.getElementById('tileAutoExport').onclick = openAutoExportView;
+    document.getElementById('backFromAutoExport').onclick = function(){ history.back(); };
 
     if('serviceWorker' in navigator){
       navigator.serviceWorker.register('./sw.js').catch(function(){});
