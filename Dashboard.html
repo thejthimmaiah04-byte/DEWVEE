@@ -94,6 +94,38 @@
     .cardNav.right{ right:-14px; }
     .cardNav.hide{ opacity:0; pointer-events:none; }
     .cardNav.dimmed{ opacity:.3; pointer-events:none; }
+    .cardLoc{ font-size:10px; color:var(--muted); margin:1px 0 4px;
+              overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .cardHideBtn{ position:absolute; top:8px; right:8px; font-size:10px; font-weight:700;
+                  background:rgba(229,72,77,.15); border:1px solid rgba(229,72,77,.3);
+                  color:var(--bad); border-radius:7px; padding:3px 7px; cursor:pointer;
+                  display:none; z-index:3; }
+    .card.longpress .cardHideBtn{ display:block; }
+    .card{ position:relative; }
+    /* pull-to-refresh */
+    #ptr{ display:flex; justify-content:center; align-items:center; height:0; overflow:hidden;
+          transition:height .2s; color:var(--muted); font-size:13px; }
+    #ptr.active{ height:38px; }
+    /* alert modal */
+    .alertModal{ display:none; position:fixed; inset:0; z-index:120; background:rgba(0,0,0,.55);
+                 align-items:center; justify-content:center; padding:16px; }
+    .alertModal.open{ display:flex; }
+    .alertBox{ background:var(--card); border:1px solid var(--line); border-radius:18px;
+               padding:24px; width:100%; max-width:400px; box-shadow:var(--sh-2); }
+    .alertBox h3{ margin:0 0 16px; font-size:16px; font-weight:800; }
+    .alertRow{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px; }
+    .alertField label{ display:block; font-size:11px; color:var(--muted); margin-bottom:4px; font-weight:600; }
+    .alertField input{ width:100%; padding:7px 10px; border-radius:9px; border:1px solid var(--line);
+                       background:transparent; color:var(--ink); font:inherit; font-size:13px; }
+    .alertDevRow{ margin-bottom:18px; }
+    .alertDevName{ font-size:12px; font-weight:700; display:flex; align-items:center; gap:7px; margin-bottom:8px; }
+    .alertFields{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .alertFields label{ display:flex; flex-direction:column; gap:4px; font-size:11px; color:var(--muted); font-weight:600; }
+    .alertInput{ padding:6px 9px; border-radius:8px; border:1px solid var(--line);
+                 background:transparent; color:var(--ink); font:inherit; font-size:13px; width:100%; box-sizing:border-box; }
+    /* BLE countdown */
+    .cfgCountdown{ font-size:12px; color:var(--muted); font-weight:600; text-align:center;
+                   padding:6px 0 2px; letter-spacing:.03em; }
     .cardDots{ display:flex; justify-content:center; gap:6px; margin:0 0 22px; }
     .cardDots.hide{ display:none; }
     .cardDot{ width:6px; height:6px; border-radius:3px; background:var(--line);
@@ -546,6 +578,16 @@
         <div class="tname">Configure</div>
         <div class="tsub">Name, WiFi &amp; intervals via Bluetooth</div>
       </button>
+      <button class="tile" id="tileAlerts">
+        <svg class="ticon" viewBox="0 0 46 46" fill="none" aria-hidden="true">
+          <defs><linearGradient id="alTG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e0a13a"/><stop offset="1" stop-color="#e5484d"/></linearGradient></defs>
+          <path d="M23 8 L38 34 H8 Z" stroke="url(#alTG)" stroke-width="2" stroke-linejoin="round" fill="none"/>
+          <line x1="23" y1="19" x2="23" y2="26" stroke="url(#alTG)" stroke-width="2.2" stroke-linecap="round"/>
+          <circle cx="23" cy="30.5" r="1.4" fill="url(#alTG)"/>
+        </svg>
+        <div class="tname">Alerts</div>
+        <div class="tsub">Temperature &amp; humidity thresholds</div>
+      </button>
       <button class="tile" id="tileAutoExport">
         <svg class="ticon" viewBox="0 0 46 46" fill="none" aria-hidden="true">
           <defs><linearGradient id="aexTG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3ecf8e"/><stop offset="1" stop-color="#5b8cff"/></linearGradient></defs>
@@ -598,6 +640,7 @@
 
   <main>
     <div class="banner" id="banner"></div>
+    <div id="ptr">↓ release to refresh</div>
     <div class="cardsWrap">
       <button class="cardNav left hide" id="cardsPrev" aria-label="Previous Dewvees">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
@@ -747,9 +790,14 @@
         <button class="cfgDiscoBtn" id="bleDiscoBtn">Disconnect</button>
       </div>
 
+      <div class="cfgCountdown" id="cfgCountdown"></div>
       <div class="cfgField">
         <label>Device Name</label>
         <input type="text" id="cfgName" maxlength="32" placeholder="DEWVEE:01">
+      </div>
+      <div class="cfgField">
+        <label>Location Label</label>
+        <input type="text" id="cfgLocation" maxlength="48" placeholder="e.g. Server Room, Bedroom">
       </div>
       <div class="cfgField">
         <label>Sample every (minutes)</label>
@@ -777,6 +825,10 @@
       <div class="cfgField">
         <label>Google Sheets URL</label>
         <input type="text" id="cfgUrl" placeholder="https://script.google.com/…">
+      </div>
+      <div class="cfgField">
+        <label>Upload Security Key <span style="font-weight:400;color:var(--muted)">(optional, must match Apps Script)</span></label>
+        <input type="password" id="cfgKey" placeholder="Leave blank to keep current key">
       </div>
 
       <div class="cfgSaveRow">
@@ -871,6 +923,20 @@
   </div>
 
   </div><!-- /#views -->
+
+  <!-- ═══════════════ ALERT THRESHOLD MODAL ═══════════════ -->
+  <div class="alertModal" id="alertModal">
+    <div class="alertBox">
+      <h3>Alert Thresholds</h3>
+      <p style="font-size:13px;color:var(--muted);margin:0 0 16px">Set min/max for each pod — leave blank to disable. An email is sent when any value breaches its limit.</p>
+      <div id="alertDevRows"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;padding-top:14px;border-top:1px solid var(--line)">
+        <button class="mbtn ghost" id="alertCancel">Cancel</button>
+        <button class="mbtn primary" id="alertSave">Save</button>
+      </div>
+      <div id="alertStatus" style="font-size:12px;text-align:center;padding-top:8px;color:var(--muted)"></div>
+    </div>
+  </div>
 
   <div class="modalOverlay" id="exportOverlay">
     <div class="modal">
@@ -1037,7 +1103,12 @@
       else if(fn==='getReadings'){
         var p=args[0]||{};
         url=API_URL+'?action=data&range='+encodeURIComponent(p.range||'day')+
-            (p.devices?'&devices='+encodeURIComponent(p.devices):'');
+            (p.devices?'&devices='+encodeURIComponent(p.devices):'')+
+            (p.dayOffset?'&dayOffset='+encodeURIComponent(p.dayOffset):'');
+      } else if(fn==='getAlertSettings'){
+        url=API_URL+'?action=getAlertSettings';
+      } else if(fn==='setAlertSettings'){
+        url=API_URL+'?action=setAlertSettings&data='+encodeURIComponent(JSON.stringify(args[0]||{}));
       } else if(fn==='getReadingsRange'){
         var pr=args[0]||{};
         url=API_URL+'?action=export&from='+encodeURIComponent(pr.from)+'&to='+encodeURIComponent(pr.to)+
@@ -1127,13 +1198,15 @@
     var cardEls = {};
 
     function cardInnerHTML(d){
-      return '<div class="cardtop">'+
-          '<span class="name"><span class="dot cpTrigger" title="Change color" style="background:'+color(d.device)+'"></span><span class="n">'+d.device+'</span></span>'+
+      return '<button class="cardHideBtn" data-dev="'+esc(d.device)+'">Hide</button>'+
+        '<div class="cardtop">'+
+          '<span class="name"><span class="dot cpTrigger" title="Change color" style="background:'+color(d.device)+'"></span><span class="n">'+esc(d.device)+'</span></span>'+
           '<span class="bchip">'+
             '<span class="bicon"><i class="bfill"></i></span>'+
             '<span class="bwrap"><span class="bval">0</span>%</span>'+
           '</span>'+
         '</div>'+
+        '<div class="cardLoc"></div>'+
         '<div class="temp"><span class="tval">0</span><span class="u">°</span></div>'+
         '<div class="hum"><span class="hval">0</span><span class="u">%</span><span class="hl">RH</span></div>'+
         '<div class="foot"><span class="stat"></span> · <span class="ago"></span></div>';
@@ -1141,6 +1214,7 @@
     function applyCard(el, d, animate){
       el.classList.toggle('sel', state.selected.has(d.device));
       el.classList.toggle('dim', !state.selected.has(d.device));
+      var locEl=el.querySelector('.cardLoc'); if(locEl) locEl.textContent=d.location||'';
       var tval=el.querySelector('.tval'), hval=el.querySelector('.hval'), bval=el.querySelector('.bval');
       if(animate){ animateValue(tval,d.temp,1); animateValue(hval,d.hum,0); animateValue(bval,d.pct,0); }
       else {
@@ -1155,19 +1229,28 @@
       el.querySelector('.ago').textContent=ago(d.ageMs);
     }
 
-    var CLIENT_OFFLINE_MS = 12 * 60 * 60 * 1000;
+    // Hidden devices stored in localStorage
+    function getHiddenDevices(){ try{ return new Set(JSON.parse(localStorage.getItem('dewvee_hidden')||'[]')); }catch(e){ return new Set(); } }
+    function hideDevice(dev){ var h=getHiddenDevices(); h.add(dev); try{ localStorage.setItem('dewvee_hidden',JSON.stringify([...h])); }catch(e){} }
+    function unhideDevice(dev){ var h=getHiddenDevices(); h.delete(dev); try{ localStorage.setItem('dewvee_hidden',JSON.stringify([...h])); }catch(e){} }
+
     async function loadDevices(){
       var info=await gcall('getDevices');
-      // always compute online/offline from the sheet's last-seen age (12h threshold)
-      info.devices.forEach(function(d){ d.online = d.ageMs < CLIENT_OFFLINE_MS; });
-      // online pods first (stable sort keeps the server's alphabetical order
-      // within each group, so it doesn't jitter around on every refresh)
-      info.devices.sort(function(a,b){ return (b.online?1:0)-(a.online?1:0); });
-      state.devices=info.devices;
-      if(state.selected.size===0) info.devices.forEach(function(d){ state.selected.add(d.device); });
+      // Accept both old {devices:[]} and new flat [] format
+      var devList=Array.isArray(info)?info:(info.devices||[]);
+      var nowMs=Date.now();
+      devList.forEach(function(d){
+        if(d.ageMs===undefined) d.ageMs = d.ts ? nowMs - d.ts*1000 : Infinity;
+        if(d.lowBatt===undefined) d.lowBatt = d.pct<=20;
+        // d.online computed server-side based on each pod's sampleMin
+      });
+      // online pods first (stable sort keeps server's alphabetical order within groups)
+      devList.sort(function(a,b){ return (b.online?1:0)-(a.online?1:0); });
+      state.devices=devList;
+      if(state.selected.size===0) devList.forEach(function(d){ state.selected.add(d.device); });
 
-      var low=info.devices.filter(function(d){return d.lowBatt;});
-      var off=info.devices.filter(function(d){return !d.online;});
+      var low=devList.filter(function(d){return d.lowBatt;});
+      var off=devList.filter(function(d){return !d.online;});
       var msgs=[];
       if(low.length) msgs.push(dot('var(--warn)')+'Low battery: '+low.map(function(d){return esc(d.device)+' ('+d.pct+'%)';}).join(', '));
       if(off.length) msgs.push(dot('var(--bad)')+'Offline: '+off.map(function(d){return esc(d.device);}).join(', '));
@@ -1177,7 +1260,7 @@
       // clear any skeleton placeholders left over from the first-load state -
       // they live outside cardEls, so nothing else ever removes them
       host.querySelectorAll('.card.skeleton').forEach(function(el){ el.remove(); });
-      if(info.devices.length===0){
+      if(devList.length===0){
         host.innerHTML='<div style="color:var(--muted);font-size:14px;padding:10px 2px">'+
           'No Dewvees have reported to the Sheet yet — they\'ll appear here after the first upload.</div>';
         cardEls={};
@@ -1187,7 +1270,7 @@
         return;
       }
       var seen={};
-      info.devices.forEach(function(d, idx){
+      devList.forEach(function(d, idx){
         seen[d.device]=true;
         var el=cardEls[d.device];
         if(!el){
@@ -1207,7 +1290,32 @@
             elRef.appendChild(cpEl);
           })(d.device, el);
           el.addEventListener('animationend', function(){ el.classList.remove('enter'); }, {once:true});
-          el.onclick=function(){
+          // long-press (600 ms) reveals the Hide button
+          (function(dev, elRef){
+            var lpTimer=null, lpStart={x:0,y:0};
+            function startLp(x,y){ lpStart={x:x,y:y}; lpTimer=setTimeout(function(){ elRef.classList.add('longpress'); },600); }
+            function cancelLp(){ clearTimeout(lpTimer); lpTimer=null; }
+            function endLp(){ cancelLp(); setTimeout(function(){ elRef.classList.remove('longpress'); },1800); }
+            elRef.addEventListener('touchstart', function(e){ var t=e.touches[0]; startLp(t.clientX,t.clientY); },{passive:true});
+            elRef.addEventListener('touchmove',  function(e){ var t=e.touches[0]; if(Math.abs(t.clientX-lpStart.x)>8||Math.abs(t.clientY-lpStart.y)>8) cancelLp(); },{passive:true});
+            elRef.addEventListener('touchend',   endLp, {passive:true});
+            elRef.addEventListener('touchcancel',cancelLp, {passive:true});
+            elRef.addEventListener('mousedown',  function(e){ if(e.button===0) startLp(e.clientX,e.clientY); });
+            elRef.addEventListener('mouseup',    endLp);
+            elRef.addEventListener('mouseleave', cancelLp);
+            var hideBtn=elRef.querySelector('.cardHideBtn');
+            if(hideBtn) hideBtn.addEventListener('click', function(e){
+              e.stopPropagation();
+              hideDevice(dev);
+              elRef.classList.remove('longpress');
+              elRef.style.transition='opacity .25s';
+              elRef.style.opacity='0';
+              setTimeout(function(){ if(elRef.parentNode) elRef.parentNode.removeChild(elRef); delete cardEls[dev]; requestAnimationFrame(buildCardsNav); }, 260);
+            });
+          })(d.device, el);
+          el.onclick=function(e){
+            if(e.target.classList.contains('cardHideBtn')) return;
+            if(el.classList.contains('longpress')){ el.classList.remove('longpress'); return; }
             if(state.selected.has(d.device)) state.selected.delete(d.device);
             else state.selected.add(d.device);
             el.classList.toggle('sel', state.selected.has(d.device));
@@ -1599,7 +1707,15 @@
     }
     function renderAnalytics(series){
       var host=document.getElementById('analytics'); if(!host) return;
-      var lbl=document.getElementById('arange'); if(lbl) lbl.textContent=' · '+(RANGE_LABEL[state.range]||state.range);
+      var lbl=document.getElementById('arange');
+      if(lbl){
+        var rangeText=RANGE_LABEL[state.range]||state.range;
+        if(state.range==='day'&&state.dayOffset>0){
+          var d=new Date(); d.setDate(d.getDate()-state.dayOffset);
+          rangeText=d.toLocaleDateString([],{weekday:'short',month:'short',day:'numeric'});
+        }
+        lbl.textContent=' · '+rangeText;
+      }
       var keys=Object.keys(series);
       if(!keys.length){ host.innerHTML='<div style="color:var(--muted);font-size:13px;padding:2px">Select a Dewvee to see its analytics.</div>'; return; }
       var html='';
@@ -1624,7 +1740,9 @@
     async function loadData(){
       setRefreshing(true);
       var devs=Array.from(state.selected);
-      var res=devs.length ? await gcall('getReadings',{range:state.range,devices:devs.join(',')}) : {series:{}};
+      var rparams={range:state.range,devices:devs.join(',')};
+      if(state.dayOffset>0) rparams.dayOffset=state.dayOffset;
+      var res=devs.length ? await gcall('getReadings',rparams) : {series:{}};
       var multi=Object.keys(res.series).length>1;
       if(multi){
         loadSplitCharts(res.series);
@@ -2227,7 +2345,7 @@
     var BLE_SVC = 'd5770001-9e0b-4b7a-9c1e-2f3a4b5c6d7e';
     var BLE_CFG = 'd5770002-9e0b-4b7a-9c1e-2f3a4b5c6d7e';
     var BLE_STA = 'd5770003-9e0b-4b7a-9c1e-2f3a4b5c6d7e';
-    var bleDevice=null, bleCfgChar=null, bleStaChar=null;
+    var bleDevice=null, bleCfgChar=null, bleStaChar=null, bleCountdownTimer=null;
 
     function setBleStatus(state, msg){
       var row=document.getElementById('bleStatusRow');
@@ -2242,19 +2360,44 @@
     }
     function onBleDisconnect(){
       bleCfgChar=null; bleStaChar=null;
+      if(bleCountdownTimer){ clearInterval(bleCountdownTimer); bleCountdownTimer=null; }
+      document.getElementById('cfgCountdown').textContent='';
       setBleStatus('','Disconnected');
       document.getElementById('cfgForm').classList.add('hide');
       var btn=document.getElementById('bleConnectBtn');
       btn.disabled=false; btn.textContent='Connect';
     }
+    function startBleCountdown(){
+      if(!bleStaChar) return;
+      var cdEl=document.getElementById('cfgCountdown');
+      function poll(){
+        if(!bleStaChar){ if(bleCountdownTimer){ clearInterval(bleCountdownTimer); bleCountdownTimer=null; } return; }
+        bleStaChar.readValue().then(function(v){
+          var s=new TextDecoder().decode(v);
+          var m=s.match(/^ready:(\d+)$/);
+          if(m){
+            var secs=parseInt(m[1]);
+            cdEl.textContent='BLE config window: '+secs+'s remaining';
+          } else if(s==='saved'){
+            cdEl.textContent='';
+          } else {
+            cdEl.textContent='';
+          }
+        }).catch(function(){ });
+      }
+      poll();
+      bleCountdownTimer=setInterval(poll, 10000);
+    }
     function bleFillForm(cfg){
       document.getElementById('cfgName').value          = cfg.name      || '';
+      document.getElementById('cfgLocation').value      = cfg.location  || '';
       document.getElementById('cfgSampleMin').value     = cfg.sampleMin || 5;
       document.getElementById('cfgUploadHrs').value     = cfg.uploadHrs || 6;
       document.getElementById('cfgUploadsEnabled').checked = (cfg.up!==0);
       document.getElementById('cfgSsid').value          = cfg.ssid      || '';
       document.getElementById('cfgPass').value          = '';
       document.getElementById('cfgUrl').value           = cfg.url       || '';
+      document.getElementById('cfgKey').value           = '';
       document.getElementById('cfgDevName').textContent = (bleDevice&&bleDevice.name)||cfg.name||'—';
       setCfgSaveStat('','');
     }
@@ -2279,6 +2422,7 @@
         bleFillForm(cfg);
         document.getElementById('cfgForm').classList.remove('hide');
         setBleStatus('connected','Connected · '+(bleDevice.name||'Dewvee'));
+        startBleCountdown();
         btn.textContent='Reconnect'; btn.disabled=false;
       }catch(e){
         setBleStatus('err', e.name==='NotFoundError'?'No pod selected':e.message||'Connection failed');
@@ -2291,6 +2435,7 @@
       btn.disabled=true; setCfgSaveStat('','Saving…');
       var payload={
         name:      document.getElementById('cfgName').value.trim(),
+        location:  document.getElementById('cfgLocation').value.trim(),
         sampleMin: parseInt(document.getElementById('cfgSampleMin').value)||5,
         uploadHrs: parseInt(document.getElementById('cfgUploadHrs').value)||6,
         up:        document.getElementById('cfgUploadsEnabled').checked?1:0,
@@ -2299,6 +2444,8 @@
       };
       var pass=document.getElementById('cfgPass').value;
       if(pass) payload.pass=pass;
+      var key=document.getElementById('cfgKey').value;
+      if(key) payload.key=key;
       try{
         var bytes=new TextEncoder().encode(JSON.stringify(payload));
         await bleCfgChar.writeValueWithResponse(bytes);
@@ -2483,6 +2630,163 @@
     document.getElementById('aexSaveBtn').onclick    = saveAexSettings;
     document.getElementById('tileAutoExport').onclick = openAutoExportView;
     document.getElementById('backFromAutoExport').onclick = function(){ history.back(); };
+
+    // ════════════════════════════════════════════════════
+    //  PULL-TO-REFRESH
+    // ════════════════════════════════════════════════════
+    (function(){
+      var startY=0, pulling=false, THRESHOLD=60;
+      var ptr=document.getElementById('ptr');
+      document.addEventListener('touchstart',function(e){
+        var el=document.getElementById('home');
+        if(!el||el.style.display==='none') return;
+        if(window.scrollY>2) return;
+        startY=e.touches[0].clientY; pulling=true;
+      },{passive:true});
+      document.addEventListener('touchmove',function(e){
+        if(!pulling) return;
+        var dy=e.touches[0].clientY-startY;
+        if(dy>8){ ptr.classList.add('active'); ptr.textContent=dy>THRESHOLD?'↑ release to refresh':'↓ pull to refresh'; }
+        else { ptr.classList.remove('active'); }
+      },{passive:true});
+      document.addEventListener('touchend',function(e){
+        if(!pulling) return; pulling=false;
+        var dy=e.changedTouches[0].clientY-startY;
+        if(dy>THRESHOLD){ ptr.textContent='Refreshing…'; refreshAll().then(function(){ ptr.classList.remove('active'); }); }
+        else { ptr.classList.remove('active'); }
+      },{passive:true});
+    })();
+
+    // ════════════════════════════════════════════════════
+    //  ALERT THRESHOLDS MODAL
+    // ════════════════════════════════════════════════════
+    document.getElementById('tileAlerts').onclick=function(){ openAlertModal(); };
+    document.getElementById('alertModal').addEventListener('click',function(e){
+      if(e.target===this) closeAlertModal();
+    });
+    document.getElementById('alertCancel').onclick=closeAlertModal;
+    document.getElementById('alertSave').onclick=saveAlerts;
+
+    function openAlertModal(){
+      var modal=document.getElementById('alertModal');
+      modal.classList.add('open');
+      loadAlertRows();
+    }
+    function closeAlertModal(){
+      document.getElementById('alertModal').classList.remove('open');
+    }
+    async function loadAlertRows(){
+      var host=document.getElementById('alertDevRows');
+      host.innerHTML='<div style="color:var(--muted);font-size:13px;padding:8px 0">Loading…</div>';
+      try{
+        var settings=await gcall('getAlertSettings');
+        var devs=state.devices.map(function(d){return d.device;});
+        if(!devs.length){ host.innerHTML='<div style="color:var(--muted);font-size:13px">No devices yet.</div>'; return; }
+        host.innerHTML='';
+        devs.forEach(function(dev){
+          var t=settings[dev]||{};
+          var row=document.createElement('div');
+          row.className='alertDevRow';
+          row.setAttribute('data-dev',dev);
+          row.innerHTML='<div class="alertDevName"><span class="dot" style="background:'+color(dev)+'"></span>'+esc(dev)+'</div>'+
+            '<div class="alertFields">'+
+              '<label>Temp min <input class="alertInput" data-field="tempMin" type="number" step="0.5" value="'+(t.tempMin!=null?t.tempMin:'')+'" placeholder="—"></label>'+
+              '<label>Temp max <input class="alertInput" data-field="tempMax" type="number" step="0.5" value="'+(t.tempMax!=null?t.tempMax:'')+'" placeholder="—"></label>'+
+              '<label>Hum min <input class="alertInput" data-field="humMin" type="number" step="1" value="'+(t.humMin!=null?t.humMin:'')+'" placeholder="—"></label>'+
+              '<label>Hum max <input class="alertInput" data-field="humMax" type="number" step="1" value="'+(t.humMax!=null?t.humMax:'')+'" placeholder="—"></label>'+
+            '</div>';
+          host.appendChild(row);
+        });
+      }catch(e){
+        host.innerHTML='<div style="color:var(--bad);font-size:13px">Failed to load — check Apps Script deployment.</div>';
+      }
+    }
+    async function saveAlerts(){
+      var btn=document.getElementById('alertSave');
+      var stat=document.getElementById('alertStatus');
+      btn.disabled=true; btn.textContent='Saving…'; if(stat) stat.textContent='';
+      var settings={};
+      document.querySelectorAll('#alertDevRows .alertDevRow').forEach(function(row){
+        var dev=row.getAttribute('data-dev');
+        var obj={};
+        row.querySelectorAll('.alertInput').forEach(function(inp){
+          var v=inp.value.trim();
+          if(v!=='') obj[inp.getAttribute('data-field')]=parseFloat(v);
+        });
+        settings[dev]=obj;
+      });
+      try{
+        await gcall('setAlertSettings',settings);
+        btn.textContent='Save'; btn.disabled=false;
+        if(stat){ stat.textContent='✓ Saved'; setTimeout(function(){ stat.textContent=''; },2000); }
+      }catch(e){
+        btn.textContent='Save'; btn.disabled=false;
+        if(stat) stat.textContent='Error — check Apps Script deployment.';
+      }
+    }
+
+    // ════════════════════════════════════════════════════
+    //  DAY NAVIGATOR (prev/next day when range = "day")
+    // ════════════════════════════════════════════════════
+    state.dayOffset=0;  // 0 = today, 1 = yesterday, …
+
+    (function(){
+      var nav=document.createElement('div');
+      nav.id='dayNav';
+      nav.style.cssText='display:none;align-items:center;gap:4px;margin-left:6px;';
+      nav.innerHTML='<button id="dayPrev" class="iconbtn" aria-label="Previous day" style="font-size:16px">‹</button>'+
+                    '<span id="dayNavLabel" style="font-size:12px;font-weight:600;min-width:60px;text-align:center"></span>'+
+                    '<button id="dayNext" class="iconbtn" aria-label="Next day" style="font-size:16px">›</button>';
+      var rangesDiv=document.getElementById('ranges');
+      if(rangesDiv && rangesDiv.parentNode){
+        rangesDiv.parentNode.insertBefore(nav, rangesDiv.nextSibling);
+      }
+
+      function updateDayNav(){
+        var isDayRange=state.range==='day';
+        nav.style.display=isDayRange?'flex':'none';
+        if(!isDayRange){ state.dayOffset=0; return; }
+        var d=new Date(); d.setDate(d.getDate()-state.dayOffset);
+        document.getElementById('dayNavLabel').textContent=
+          state.dayOffset===0?'Today':state.dayOffset===1?'Yesterday':
+          d.toLocaleDateString([],{month:'short',day:'numeric'});
+        document.getElementById('dayNext').disabled=(state.dayOffset===0);
+      }
+
+      document.getElementById('ranges').addEventListener('click',function(){ state.dayOffset=0; updateDayNav(); });
+
+      document.getElementById('dayPrev').addEventListener('click',function(){
+        state.dayOffset++; updateDayNav(); loadData();
+      });
+      document.getElementById('dayNext').addEventListener('click',function(){
+        if(state.dayOffset>0){ state.dayOffset--; updateDayNav(); loadData(); }
+      });
+
+      var _origLoadData=loadData;
+      loadData=function(){
+        updateDayNav(); return _origLoadData.apply(this,arguments);
+      };
+    })();
+
+    // ════════════════════════════════════════════════════
+    //  BATTERY TREND IN ANALYTICS
+    // ════════════════════════════════════════════════════
+    var _origRenderAnalytics=renderAnalytics;
+    renderAnalytics=function(series){
+      _origRenderAnalytics(series);
+      var host=document.getElementById('analytics'); if(!host) return;
+      var keys=Object.keys(series);
+      var acards=host.querySelectorAll('.acard');
+      keys.forEach(function(dev, idx){
+        var card=acards[idx]; if(!card) return;
+        var pts=series[dev];
+        var bs=stat(pts.map(function(p){return p.pct!=null?{v:p.pct,t:p.t}:null;}));
+        if(!bs) return;
+        var row=document.createElement('div');
+        row.innerHTML=aRow('Battery',bs,'%',0);
+        card.appendChild(row.firstChild);
+      });
+    };
 
     if('serviceWorker' in navigator){
       navigator.serviceWorker.register('./sw.js').catch(function(){});
