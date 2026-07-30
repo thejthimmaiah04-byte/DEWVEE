@@ -294,6 +294,7 @@ bool uploadBatch() {
   body  = "{\"device\":"   + jsonStr(cfg.name);
   body += ",\"location\":" + jsonStr(cfg.location);
   body += ",\"sampleSec\":"; body += cfg.sampleSec;
+  body += ",\"uploadSec\":"; body += cfg.uploadSec;
   if (cfg.uploadKey.length()) {
     body += ",\"key\":"; body += jsonStr(cfg.uploadKey);
   }

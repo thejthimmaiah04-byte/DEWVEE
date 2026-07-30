@@ -1341,7 +1341,7 @@
       el.querySelector('.stat').innerHTML=d.online?'<span class="on">online</span>':'<span class="offl">offline</span>';
       el.querySelector('.ago').textContent=ago(d.ageMs);
       var pChip=el.querySelector('.projChip');
-      if(pChip){ var pf=fmtProjection(d.battProj,d.sampleMin,12); pChip.textContent=pf.text; pChip.className='projChip'+(pf.cls?' '+pf.cls:''); pChip.title=pf.title; }
+      if(pChip){ var pf=fmtProjection(d.battProj,(d.sampleSec||d.sampleMin*60||600)/60,(d.uploadSec||43200)/3600); pChip.textContent=pf.text; pChip.className='projChip'+(pf.cls?' '+pf.cls:''); pChip.title=pf.title; }
     }
 
     // Hidden devices stored in localStorage
@@ -2914,8 +2914,9 @@
           var days=proj.daysLeft, dText=days>=1?'~'+Math.round(days)+' days':'~'+Math.round(days*24)+' hours';
           projHTML+='<span class="astat"><b>'+dText+'</b><i>measured</i></span>';
         } else {
-          var sm=devObj?devObj.sampleMin:10;
-          var th=calcBattDays(sm,12);
+          var ssec = devObj ? (devObj.sampleSec || devObj.sampleMin*60 || 600) : 600;
+          var usec = devObj ? (devObj.uploadSec || 43200) : 43200;
+          var th   = calcBattDays(ssec/60, usec/3600);
           projHTML+='<span class="astat"><b>~'+th.days+' days</b><i>theoretical</i></span>'+
                     '<span class="astat"><b>'+th.mahDay+' mAh</b><i>per day</i></span>';
         }

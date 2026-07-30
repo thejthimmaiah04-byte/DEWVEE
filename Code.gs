@@ -24,7 +24,7 @@ var DC = { TS:1, DEVICE:2, TEMP:3, HUM:4, PCT:5, VOLT:6 };
 // ── Column indices in the Devices sheet ────────────────────────
 var DEV = { DEVICE:1, LOCATION:2, SAMPLE_MIN:3,
             FIRST_SEEN:4, LAST_SEEN:5, LAST_TEMP:6,
-            LAST_HUM:7, LAST_PCT:8 };
+            LAST_HUM:7, LAST_PCT:8, UPLOAD_SEC:9 };
 
 // ================================================================
 //  Sheet helpers
@@ -36,8 +36,8 @@ function getOrCreateSheet_(name) {
     sh = ss.insertSheet(name);
     if (name === DEVICES_SHEET) {
       sh.appendRow(['Device', 'Location', 'SampleMin', 'FirstSeen',
-                    'LastSeen', 'LastTemp', 'LastHum', 'LastPct']);
-      sh.getRange(1, 1, 1, 8).setFontWeight('bold');
+                    'LastSeen', 'LastTemp', 'LastHum', 'LastPct', 'UploadSec']);
+      sh.getRange(1, 1, 1, 9).setFontWeight('bold');
     }
   }
   return sh;
@@ -76,6 +76,7 @@ function doPost(e) {
     var device    = String(body.device    || '').trim();
     var location  = String(body.location  || '').trim();
     var sampleSec = parseInt(body.sampleSec) || (parseInt(body.sampleMin) * 60) || 300;
+    var uploadSec = parseInt(body.uploadSec) || 43200;
     var sampleMin = Math.round(sampleSec / 60) || 5;
     var rows      = body.rows;
     var incomingKey = String(body.key || '');
@@ -126,16 +127,16 @@ function doPost(e) {
     var now      = new Date();
     if (devRow < 0) {
       devSheet.appendRow([device, location, sampleMin, now, now,
-                          lastRow[2], lastRow[3], lastRow[4]]);
+                          lastRow[2], lastRow[3], lastRow[4], uploadSec]);
     } else {
-      var existing = devSheet.getRange(devRow, 1, 1, 8).getValues()[0];
-      devSheet.getRange(devRow, 1, 1, 8).setValues([[
+      var existing = devSheet.getRange(devRow, 1, 1, 9).getValues()[0];
+      devSheet.getRange(devRow, 1, 1, 9).setValues([[
         device,
         location || existing[DEV.LOCATION - 1],
         sampleMin,
         existing[DEV.FIRST_SEEN - 1] || now,
         now,
-        lastRow[2], lastRow[3], lastRow[4]
+        lastRow[2], lastRow[3], lastRow[4], uploadSec
       ]]);
     }
 
@@ -390,6 +391,7 @@ function getDevicesData_() {
     var device    = String(row[DEV.DEVICE    - 1] || '');
     var location  = row[DEV.LOCATION  - 1];
     var sampleMin = parseInt(row[DEV.SAMPLE_MIN - 1]) || 10;
+    var uploadSec = parseInt(row[DEV.UPLOAD_SEC - 1]) || 43200;
     var lastSeen  = row[DEV.LAST_SEEN - 1];
     var lastTemp  = row[DEV.LAST_TEMP - 1];
     var lastHum   = row[DEV.LAST_HUM  - 1];
@@ -402,6 +404,8 @@ function getDevicesData_() {
       device:    device,
       location:  location || '',
       sampleMin: sampleMin,
+      sampleSec: sampleMin * 60,
+      uploadSec: uploadSec,
       temp:      parseFloat(lastTemp)  || 0,
       hum:       parseFloat(lastHum)   || 0,
       pct:       parseInt(lastPct)     || 0,
@@ -420,11 +424,12 @@ function getDevicesData_() {
     if (seenDevs[dev]) continue;
     var snap      = dataSnap[dev];
     var tsMs      = snap.lastTs || 0;
-    var sampleMin = 10;
     result.push({
       device:    dev,
       location:  '',
-      sampleMin: sampleMin,
+      sampleMin: 10,
+      sampleSec: 600,
+      uploadSec: 43200,
       temp:      snap.lastTemp,
       hum:       snap.lastHum,
       pct:       snap.lastPct,
