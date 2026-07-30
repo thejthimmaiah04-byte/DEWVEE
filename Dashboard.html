@@ -1262,20 +1262,24 @@
 
     function fmtProjection(proj, sampleMin, uploadHrs){
       // Returns {text, cls, title} for the .projChip
-      // When measured regression isn't ready, fall back to theoretical estimate
-      if(!proj || proj.note==='insufficient_data'){
+      // Fall back to theoretical when regression not yet available
+      var noData = !proj || proj.note==='insufficient_data' || proj.note==='stable'
+                   || !proj.daysLeft || isNaN(proj.daysLeft);
+      if(noData){
         var th = calcBattDays(sampleMin||10, uploadHrs||12);
         return {
-          text:  '~'+th.days+' days',
+          text:  '~'+th.days+'d · '+th.mahDay+' mAh/d',
           cls:   'dim',
-          title: 'Theoretical estimate at '+( sampleMin||10)+'min/'+(uploadHrs||12)+'h settings · '+th.mahDay+' mAh/day · waiting for measured data'
+          title: 'Theoretical · '+(sampleMin||10)+' min sample / '+(uploadHrs||12)+' h upload · '+
+                 th.mahDay+' mAh/day (sleep '+SLEEP_MAH_DAY+' + sensor '+th.sensorMah+' + WiFi '+th.wifiMah+' + self-disch '+SELF_DISCHARGE_MAH+')'
         };
       }
       var d=proj.daysLeft, r2=proj.r2||0;
-      var text= d>=1 ? '~'+Math.round(d)+' days' : '~'+Math.round(d*24)+' hrs';
-      var cls = d<=3 ? 'warn' : (r2<0.5 ? 'dim' : '');
-      var title='~'+Math.round(d)+' days remaining (measured) · '+proj.drainPctPerDay+'%/day drain'+
-                (proj.spanDays?' · based on '+proj.spanDays+'d of data':'');
+      var dText = d>=1 ? '~'+Math.round(d)+'d' : '~'+Math.round(d*24)+'h';
+      var text  = dText+' · '+proj.drainPctPerDay+'%/d';
+      var cls   = d<=3 ? 'warn' : (r2<0.5 ? 'dim' : '');
+      var title = '~'+Math.round(d)+' days remaining (measured voltage drain) · '+proj.drainPctPerDay+'%/day'+
+                  (proj.spanDays?' · based on '+proj.spanDays+'d of data':'');
       return {text:text, cls:cls, title:title};
     }
     function applyCard(el, d, animate){
