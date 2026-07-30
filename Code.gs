@@ -360,7 +360,7 @@ function getDevicesData_() {
       ts:        Math.floor(tsMs / 1000),
       lowBatt:   parseInt(lastPct) <= 20,
       ageMs:     tsMs > 0 ? now - tsMs : Infinity,
-      online:    tsMs > 0 && (now - tsMs) < sampleMin * 2.5 * 60 * 1000,
+      online:    tsMs > 0 && (now - tsMs) < 86400000,
       battProj:  computeBatteryProjection_(readingsMap[device] || null)
     });
   }
@@ -383,7 +383,7 @@ function getDevicesData_() {
       ts:        Math.floor(tsMs / 1000),
       lowBatt:   snap.lastPct <= 20,
       ageMs:     tsMs > 0 ? now - tsMs : Infinity,
-      online:    tsMs > 0 && (now - tsMs) < sampleMin * 2.5 * 60 * 1000,
+      online:    tsMs > 0 && (now - tsMs) < 86400000,
       battProj:  computeBatteryProjection_(readingsMap[dev] || null)
     });
   }
