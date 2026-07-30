@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="Dewvee">
+  <defs>
+    <linearGradient id="dewvee-g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f0a54e"/>
+      <stop offset="1" stop-color="#5b8cff"/>
+    </linearGradient>
+    <clipPath id="dewvee-c">
+      <path d="M32 6 C32 6 16 30 16 42 A16 16 0 1 0 48 42 C48 30 32 6 32 6 Z"/>
+    </clipPath>
+  </defs>
+  <path d="M32 6 C32 6 16 30 16 42 A16 16 0 1 0 48 42 C48 30 32 6 32 6 Z" fill="url(#dewvee-g)"/>
+  <g clip-path="url(#dewvee-c)">
+    <path d="M17 42 L24 36 L30 40 L37 30 L44 35 L50 28" fill="none" stroke="#fff"
+          stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
