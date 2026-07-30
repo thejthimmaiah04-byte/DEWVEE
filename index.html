@@ -434,6 +434,12 @@
                      background:var(--bg); border:1px solid var(--line); border-radius:9px;
                      padding:9px 11px; box-sizing:border-box; transition:border-color .15s; }
     .cfgField input:focus{ outline:none; border-color:rgba(91,140,255,.55); }
+    .cfgIntervalRow{ display:flex; gap:8px; }
+    .cfgIntervalRow input{ flex:1; min-width:0; }
+    .cfgIntervalRow select{ font:inherit; font-size:13px; color:var(--ink); background:var(--bg);
+                            border:1px solid var(--line); border-radius:9px; padding:9px 10px;
+                            cursor:pointer; flex:none; width:100px; }
+    .cfgIntervalRow select:focus{ outline:none; border-color:rgba(91,140,255,.55); }
     .cfgToggleRow{ display:flex; align-items:center; justify-content:space-between;
                    padding:10px 0; border-bottom:1px solid var(--line); margin-bottom:14px; }
     .cfgToggleLabel{ font-size:14px; font-weight:600; }
@@ -805,12 +811,26 @@
         <input type="text" id="cfgLocation" maxlength="48" placeholder="e.g. Server Room, Bedroom">
       </div>
       <div class="cfgField">
-        <label>Sample every (minutes)</label>
-        <input type="number" id="cfgSampleMin" min="1" max="60" value="5">
+        <label>Sample every</label>
+        <div class="cfgIntervalRow">
+          <input type="number" id="cfgSampleVal" min="1" value="10">
+          <select id="cfgSampleUnit">
+            <option value="s">seconds</option>
+            <option value="m" selected>minutes</option>
+            <option value="h">hours</option>
+          </select>
+        </div>
       </div>
       <div class="cfgField">
-        <label>Upload every (hours)</label>
-        <input type="number" id="cfgUploadHrs" min="1" max="168" value="6">
+        <label>Upload every</label>
+        <div class="cfgIntervalRow">
+          <input type="number" id="cfgUploadVal" min="1" value="12">
+          <select id="cfgUploadUnit">
+            <option value="s">seconds</option>
+            <option value="m">minutes</option>
+            <option value="h" selected>hours</option>
+          </select>
+        </div>
       </div>
       <div class="cfgToggleRow">
         <span class="cfgToggleLabel">Send data to Google Sheet</span>
@@ -1250,9 +1270,31 @@
       };
     }
 
+    // Convert interval value+unit to seconds
+    function getIntervalSec(valId, unitId) {
+      var val  = Math.max(1, parseInt(document.getElementById(valId).value) || 1);
+      var unit = document.getElementById(unitId).value;
+      if (unit === 's') return val;
+      if (unit === 'm') return val * 60;
+      return val * 3600;
+    }
+    // Pick the most readable unit for a seconds value
+    function bestUnit(sec) {
+      if (sec < 60)   return { val: sec,              unit: 's' };
+      if (sec < 3600) return { val: Math.round(sec / 60),   unit: 'm' };
+      return            { val: Math.round(sec / 3600 * 10) / 10, unit: 'h' };
+    }
+    function setIntervalDisplay(valId, unitId, sec) {
+      var d = bestUnit(sec);
+      document.getElementById(valId).value = d.val;
+      document.getElementById(unitId).value = d.unit;
+    }
+
     function updateBattEstUI() {
-      var sm  = parseInt(document.getElementById('cfgSampleMin').value)  || 10;
-      var uhr = parseInt(document.getElementById('cfgUploadHrs').value)  || 12;
+      var sampleSec = getIntervalSec('cfgSampleVal', 'cfgSampleUnit');
+      var uploadSec = getIntervalSec('cfgUploadVal', 'cfgUploadUnit');
+      var sm  = sampleSec / 60;
+      var uhr = uploadSec / 3600;
       var r   = calcBattDays(sm, uhr);
       var yrs = (r.days / 365).toFixed(1);
       document.getElementById('battEstVal').textContent    = '~' + r.days + ' days (~' + yrs + ' yrs)';
@@ -2462,10 +2504,13 @@
       bleCountdownTimer=setInterval(poll, 10000);
     }
     function bleFillForm(cfg){
-      document.getElementById('cfgName').value          = cfg.name      || '';
-      document.getElementById('cfgLocation').value      = cfg.location  || '';
-      document.getElementById('cfgSampleMin').value     = cfg.sampleMin || 5;
-      document.getElementById('cfgUploadHrs').value     = cfg.uploadHrs || 6;
+      document.getElementById('cfgName').value     = cfg.name     || '';
+      document.getElementById('cfgLocation').value = cfg.location || '';
+      // Device sends sampleSec/uploadSec; fall back to old sampleMin/uploadHrs if older firmware
+      var sampleSec = cfg.sampleSec || (cfg.sampleMin ? cfg.sampleMin * 60 : 600);
+      var uploadSec = cfg.uploadSec || (cfg.uploadHrs ? cfg.uploadHrs * 3600 : 43200);
+      setIntervalDisplay('cfgSampleVal', 'cfgSampleUnit', sampleSec);
+      setIntervalDisplay('cfgUploadVal', 'cfgUploadUnit', uploadSec);
       updateBattEstUI();
       document.getElementById('cfgUploadsEnabled').checked = (cfg.up!==0);
       document.getElementById('cfgSsid').value          = cfg.ssid      || '';
@@ -2510,8 +2555,8 @@
       var payload={
         name:      document.getElementById('cfgName').value.trim(),
         location:  document.getElementById('cfgLocation').value.trim(),
-        sampleMin: parseInt(document.getElementById('cfgSampleMin').value)||5,
-        uploadHrs: parseInt(document.getElementById('cfgUploadHrs').value)||6,
+        sampleSec: getIntervalSec('cfgSampleVal', 'cfgSampleUnit'),
+        uploadSec: getIntervalSec('cfgUploadVal', 'cfgUploadUnit'),
         up:        document.getElementById('cfgUploadsEnabled').checked?1:0,
         ssid:      document.getElementById('cfgSsid').value.trim(),
         url:       document.getElementById('cfgUrl').value.trim()
@@ -2554,8 +2599,10 @@
     document.getElementById('backFromConfig').onclick= function(){ history.back(); };
     document.getElementById('bleConnectBtn').onclick = bleConnect;
     document.getElementById('cfgSaveBtn').onclick    = bleSave;
-    document.getElementById('cfgSampleMin').addEventListener('input', updateBattEstUI);
-    document.getElementById('cfgUploadHrs').addEventListener('input', updateBattEstUI);
+    document.getElementById('cfgSampleVal').addEventListener('input',  updateBattEstUI);
+    document.getElementById('cfgSampleUnit').addEventListener('change', updateBattEstUI);
+    document.getElementById('cfgUploadVal').addEventListener('input',  updateBattEstUI);
+    document.getElementById('cfgUploadUnit').addEventListener('change', updateBattEstUI);
     document.getElementById('bleDiscoBtn').onclick   = bleDisconnect;
 
     // ════════════════════════════════════════════════════

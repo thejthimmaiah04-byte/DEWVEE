@@ -62,19 +62,19 @@
 #define DEFAULT_SSID        ""           // set via BLE on first use
 #define DEFAULT_PASS        ""           // set via BLE on first use
 #define DEFAULT_URL         "https://script.google.com/macros/s/AKfycbw88DpkYijK98qTzhlSguLAFxFRQI_H3KXreYcRp2sitSr3XWFPRz9QwR88ocdsRsO7/exec"
-#define DEFAULT_SAMPLE_MIN  10   // 10 min → 144 readings/day; tuned for 6-month battery life
-#define DEFAULT_UPLOAD_HRS  12   // 12 h  → 2 WiFi sessions/day
+#define DEFAULT_SAMPLE_SEC  600    // 10 min → 144 readings/day
+#define DEFAULT_UPLOAD_SEC  43200  // 12 h   → 2 WiFi sessions/day
 
 struct Config {
   String   name;
-  String   location;       // human-readable placement label
-  uint16_t sampleMin;
-  uint16_t uploadHrs;
+  String   location;
+  uint32_t sampleSec;      // sample interval in seconds (min 1)
+  uint32_t uploadSec;      // upload interval in seconds (min sampleSec)
   bool     uploadsEnabled;
   String   ssid;
   String   pass;
   String   url;
-  String   uploadKey;      // shared secret for server-side auth
+  String   uploadKey;
 } cfg;
 
 Preferences prefs;
@@ -103,7 +103,7 @@ const int REED_PIN = 2;   // Terminal A -> GND, B -> GPIO2, internal pull-up
 
 const float VBAT_DIVIDER  = 2.0f;
 const int   BURST_SAMPLES = 3;    // SHT45 high-precision takes 8.2 ms; 3 × 15 ms is enough
-#define uS_PER_MIN 60000000ULL
+#define uS_PER_SEC 1000000ULL
 
 // -------- RTC-persisted state (survives deep sleep) --------
 typedef struct {
@@ -158,7 +158,7 @@ void ledConfig() {
 void goToSleep() {
   WiFi.mode(WIFI_OFF);
   Serial.flush();
-  esp_sleep_enable_timer_wakeup((uint64_t)cfg.sampleMin * uS_PER_MIN);
+  esp_sleep_enable_timer_wakeup((uint64_t)cfg.sampleSec * uS_PER_SEC);
 #if ENABLE_REED_WAKE
   esp_deep_sleep_enable_gpio_wakeup(1ULL << REED_PIN, ESP_GPIO_WAKEUP_GPIO_LOW);
 #endif
@@ -293,7 +293,7 @@ bool uploadBatch() {
   body.reserve(128 + bufCount * 70);
   body  = "{\"device\":"   + jsonStr(cfg.name);
   body += ",\"location\":" + jsonStr(cfg.location);
-  body += ",\"sampleMin\":"; body += cfg.sampleMin;
+  body += ",\"sampleSec\":"; body += cfg.sampleSec;
   if (cfg.uploadKey.length()) {
     body += ",\"key\":"; body += jsonStr(cfg.uploadKey);
   }
@@ -329,26 +329,26 @@ bool uploadBatch() {
 // -------- Config storage --------
 void loadConfig() {
   prefs.begin("dewvee", true);
-  cfg.name           = prefs.getString("name",      DEFAULT_NAME);
-  cfg.location       = prefs.getString("loc",       "");
-  cfg.sampleMin      = prefs.getUShort("sampleMin", DEFAULT_SAMPLE_MIN);
-  cfg.uploadHrs      = prefs.getUShort("uploadHrs", DEFAULT_UPLOAD_HRS);
-  cfg.uploadsEnabled = prefs.getBool  ("up",         true);
-  cfg.ssid           = prefs.getString("ssid",      DEFAULT_SSID);
-  cfg.pass           = prefs.getString("pass",      DEFAULT_PASS);
-  cfg.url            = prefs.getString("url",       DEFAULT_URL);
-  cfg.uploadKey      = prefs.getString("ukey",      "");
+  cfg.name           = prefs.getString ("name",      DEFAULT_NAME);
+  cfg.location       = prefs.getString ("loc",       "");
+  cfg.sampleSec      = prefs.getULong  ("sampleSec", DEFAULT_SAMPLE_SEC);
+  cfg.uploadSec      = prefs.getULong  ("uploadSec", DEFAULT_UPLOAD_SEC);
+  cfg.uploadsEnabled = prefs.getBool   ("up",         true);
+  cfg.ssid           = prefs.getString ("ssid",      DEFAULT_SSID);
+  cfg.pass           = prefs.getString ("pass",      DEFAULT_PASS);
+  cfg.url            = prefs.getString ("url",       DEFAULT_URL);
+  cfg.uploadKey      = prefs.getString ("ukey",      "");
   prefs.end();
-  if (cfg.sampleMin < 1) cfg.sampleMin = 1;
-  if (cfg.uploadHrs < 1) cfg.uploadHrs = 1;
+  if (cfg.sampleSec < 1)              cfg.sampleSec = 1;
+  if (cfg.uploadSec < cfg.sampleSec)  cfg.uploadSec = cfg.sampleSec;
 }
 
 void saveConfig() {
   prefs.begin("dewvee", false);
   prefs.putString("name",      cfg.name);
   prefs.putString("loc",       cfg.location);
-  prefs.putUShort("sampleMin", cfg.sampleMin);
-  prefs.putUShort("uploadHrs", cfg.uploadHrs);
+  prefs.putULong ("sampleSec", cfg.sampleSec);
+  prefs.putULong ("uploadSec", cfg.uploadSec);
   prefs.putBool  ("up",        cfg.uploadsEnabled);
   prefs.putString("ssid",      cfg.ssid);
   prefs.putString("pass",      cfg.pass);
@@ -361,8 +361,8 @@ String buildConfigJson() {
   JsonDocument doc;
   doc["name"]      = cfg.name;
   doc["location"]  = cfg.location;
-  doc["sampleMin"] = cfg.sampleMin;
-  doc["uploadHrs"] = cfg.uploadHrs;
+  doc["sampleSec"] = cfg.sampleSec;
+  doc["uploadSec"] = cfg.uploadSec;
   doc["up"]        = cfg.uploadsEnabled ? 1 : 0;
   doc["ssid"]      = cfg.ssid;
   doc["url"]       = cfg.url;
@@ -380,8 +380,8 @@ void applyConfigJson(const String& json) {
 
   if (!doc["name"].isNull())      cfg.name           = doc["name"].as<String>();
   if (!doc["location"].isNull())  cfg.location       = doc["location"].as<String>();
-  if (!doc["sampleMin"].isNull()) cfg.sampleMin      = doc["sampleMin"].as<uint16_t>();
-  if (!doc["uploadHrs"].isNull()) cfg.uploadHrs      = doc["uploadHrs"].as<uint16_t>();
+  if (!doc["sampleSec"].isNull()) cfg.sampleSec      = doc["sampleSec"].as<uint32_t>();
+  if (!doc["uploadSec"].isNull()) cfg.uploadSec      = doc["uploadSec"].as<uint32_t>();
   if (!doc["up"].isNull())        cfg.uploadsEnabled = doc["up"].as<int>() != 0;
   if (!doc["ssid"].isNull())      cfg.ssid           = doc["ssid"].as<String>();
   if (!doc["url"].isNull())       cfg.url            = doc["url"].as<String>();
@@ -398,8 +398,8 @@ void applyConfigJson(const String& json) {
     memset(cachedBssid, 0, 6);
     cachedChannel = 0;
   }
-  if (cfg.sampleMin < 1) cfg.sampleMin = 1;
-  if (cfg.uploadHrs < 1) cfg.uploadHrs = 1;
+  if (cfg.sampleSec < 1)             cfg.sampleSec = 1;
+  if (cfg.uploadSec < cfg.sampleSec) cfg.uploadSec = cfg.sampleSec;
   saveConfig();
   if (configChar) configChar->setValue(buildConfigJson().c_str());
   if (statusChar) statusChar->setValue("saved");
@@ -630,7 +630,7 @@ void setup() {
       Serial.printf("Battery critical (%.3fV) - protection sleep 60 min.\n", vbat);
       ledBlink(50, 0, 0, 2, 400, 300);   // 2× red = critical battery
       ledOff(); Serial.flush();
-      esp_sleep_enable_timer_wakeup(60ULL * uS_PER_MIN);
+      esp_sleep_enable_timer_wakeup(60ULL * uS_PER_SEC);
 #if ENABLE_REED_WAKE
       esp_deep_sleep_enable_gpio_wakeup(1ULL << REED_PIN, ESP_GPIO_WAKEUP_GPIO_LOW);
 #endif
@@ -679,8 +679,7 @@ void setup() {
   bootCount++;
 
   // ---- Normal wake: sample → buffer → upload if due ----
-  uint16_t uploadEntries = (uint16_t)(
-    ((uint32_t)cfg.uploadHrs * 60UL + cfg.sampleMin - 1) / cfg.sampleMin);
+  uint32_t uploadEntries = (cfg.uploadSec + cfg.sampleSec - 1) / cfg.sampleSec;
   if (uploadEntries < 1) uploadEntries = 1;
   bool uploadDue = cfg.uploadsEnabled && (bufCount + 1 >= uploadEntries);
 

@@ -66,7 +66,8 @@ function doPost(e) {
     var body = JSON.parse(e.postData.contents);
     var device    = String(body.device    || '').trim();
     var location  = String(body.location  || '').trim();
-    var sampleMin = parseInt(body.sampleMin) || 5;
+    var sampleSec = parseInt(body.sampleSec) || (parseInt(body.sampleMin) * 60) || 300;
+    var sampleMin = Math.round(sampleSec / 60) || 5;
     var rows      = body.rows;
     var incomingKey = String(body.key || '');
 
