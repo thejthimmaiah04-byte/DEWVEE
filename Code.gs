@@ -236,38 +236,59 @@ function getDevicesData_() {
   var devData   = devSheet.getDataRange().getValues();
   var now       = Date.now();
   var result    = [];
-  // Single pass over Data sheet: build volt map and per-device pct history
+  // Single pass over Data sheet: voltMap, pct history for projection,
+  // AND last-reading snapshot for each device (fallback when Devices sheet is empty)
   var voltMap      = {};
   var readingsMap  = {};
+  var dataSnap     = {};  // device → {lastTs, lastTemp, lastHum, lastPct, lastVolt}
   try {
     var allD = dataSheet.getDataRange().getValues();
     for (var ri = 1; ri < allD.length; ri++) {
-      var dev = String(allD[ri][DC.DEVICE - 1]);
-      voltMap[dev] = parseFloat(allD[ri][DC.VOLT - 1]) || 0;
-      var ts  = new Date(allD[ri][DC.TS   - 1]).getTime();
-      var pct = parseInt(allD[ri][DC.PCT  - 1]);
+      var row = allD[ri];
+      var dev = String(row[DC.DEVICE - 1]);
+      if (!dev || dev === 'undefined') continue;
+
+      var ts   = new Date(row[DC.TS   - 1]).getTime();
+      var pct  = parseInt(row[DC.PCT  - 1]);
+      var volt = parseFloat(row[DC.VOLT - 1]) || 0;
+
+      voltMap[dev] = volt;   // last row wins — sheet is chronological
+
       if (!isNaN(pct) && pct >= 0 && pct <= 100 && ts > 0) {
         if (!readingsMap[dev]) readingsMap[dev] = [];
         readingsMap[dev].push({ ts: ts, pct: pct });
       }
+
+      // Keep the most-recent snapshot per device for the fallback path
+      if (!dataSnap[dev] || ts > dataSnap[dev].lastTs) {
+        dataSnap[dev] = {
+          lastTs:   ts,
+          lastTemp: parseFloat(row[DC.TEMP - 1]) || 0,
+          lastHum:  parseFloat(row[DC.HUM  - 1]) || 0,
+          lastPct:  isNaN(pct) ? 0 : pct,
+          lastVolt: volt
+        };
+      }
     }
-    // Sort each device's history ascending (sheet may not be perfectly ordered)
     for (var d in readingsMap) {
-      readingsMap[d].sort(function(a,b){ return a.ts - b.ts; });
+      readingsMap[d].sort(function(a, b) { return a.ts - b.ts; });
     }
   } catch(e2) {}
 
+  // Primary path: devices listed in the Devices sheet (populated by doPost)
+  var seenDevs = {};
   for (var r = 1; r < devData.length; r++) {
     var row       = devData[r];
-    var device    = row[DEV.DEVICE    - 1];
+    var device    = String(row[DEV.DEVICE    - 1] || '');
     var location  = row[DEV.LOCATION  - 1];
-    var sampleMin = parseInt(row[DEV.SAMPLE_MIN - 1]) || 5;
+    var sampleMin = parseInt(row[DEV.SAMPLE_MIN - 1]) || 10;
     var lastSeen  = row[DEV.LAST_SEEN - 1];
     var lastTemp  = row[DEV.LAST_TEMP - 1];
     var lastHum   = row[DEV.LAST_HUM  - 1];
     var lastPct   = row[DEV.LAST_PCT  - 1];
     if (!device) continue;
 
+    seenDevs[device] = true;
     var tsMs = lastSeen ? new Date(lastSeen).getTime() : 0;
     var volt = voltMap[device] || 0;
     result.push({
@@ -282,11 +303,42 @@ function getDevicesData_() {
       lowBatt:   parseInt(lastPct) <= 20,
       ageMs:     tsMs > 0 ? now - tsMs : Infinity,
       online:    tsMs > 0 && (now - tsMs) < sampleMin * 2.5 * 60 * 1000,
-      battProj:  computeBatteryProjection_(readingsMap[String(device)] || null)
+      battProj:  computeBatteryProjection_(readingsMap[device] || null)
     });
   }
+
+  // Fallback path: devices found only in the Data sheet (Devices sheet not yet populated,
+  // e.g. right after a fresh deployment with existing historical data)
+  for (var dev in dataSnap) {
+    if (seenDevs[dev]) continue;   // already covered above
+    var snap      = dataSnap[dev];
+    var tsMs      = snap.lastTs || 0;
+    var sampleMin = 10;  // assume new default; overwritten next upload
+    result.push({
+      device:    dev,
+      location:  '',
+      sampleMin: sampleMin,
+      temp:      snap.lastTemp,
+      hum:       snap.lastHum,
+      pct:       snap.lastPct,
+      volt:      snap.lastVolt,
+      ts:        Math.floor(tsMs / 1000),
+      lowBatt:   snap.lastPct <= 20,
+      ageMs:     tsMs > 0 ? now - tsMs : Infinity,
+      online:    tsMs > 0 && (now - tsMs) < sampleMin * 2.5 * 60 * 1000,
+      battProj:  computeBatteryProjection_(readingsMap[dev] || null)
+    });
+  }
+
+  // Sort: online first, then alphabetical
+  result.sort(function(a, b) {
+    if (a.online !== b.online) return a.online ? -1 : 1;
+    return String(a.device).localeCompare(String(b.device));
+  });
+
   return { devices: result };
 }
+
 
 function getReadingsData_(p) {
   var range      = p.range      || 'day';
