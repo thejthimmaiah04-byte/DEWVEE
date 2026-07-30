@@ -836,6 +836,12 @@
         <input type="password" id="cfgKey" placeholder="Leave blank to keep current key">
       </div>
 
+      <div id="battEstRow" style="background:var(--surface2,rgba(255,255,255,.05));border-radius:10px;padding:12px 14px;margin:4px 0 10px;font-size:13px;line-height:1.5">
+        <span style="color:var(--muted)">Estimated battery life at these settings:</span><br>
+        <span id="battEstVal" style="font-size:18px;font-weight:700;color:var(--text)">—</span>
+        <span id="battEstDetail" style="color:var(--muted);font-size:12px;margin-left:8px"></span>
+      </div>
+
       <div class="cfgSaveRow">
         <button class="bleBtn" id="cfgSaveBtn">Save to Pod</button>
         <span class="cfgSaveStat" id="cfgSaveStat"></span>
@@ -1218,13 +1224,57 @@
         '<div class="foot"><span class="stat"></span> · <span class="ago"></span></div>';
     }
 
-    function fmtProjection(proj){
+    // ── Battery life estimator ──────────────────────────────────
+    // Constants matching the firmware + measured averages
+    var BATT_USABLE_MAH      = 2400;   // 3000 mAh × 80% DoD
+    var SLEEP_MAH_DAY        = 0.24;   // 10 µA deep sleep × 24 h
+    var SENSOR_MA            = 30;     // MCU @ 40 MHz + SHT45 active
+    var SENSOR_ACTIVE_S      = 0.30;   // seconds per sensor wake
+    var WIFI_MA              = 130;    // average during WiFi session
+    var WIFI_ACTIVE_S        = 4.0;    // seconds per upload
+    var SELF_DISCHARGE_MAH   = 2.0;    // LiPo self-discharge ~2%/month
+
+    function calcBattDays(sampleMin, uploadHrs) {
+      sampleMin  = Math.max(1,  parseFloat(sampleMin)  || 10);
+      uploadHrs  = Math.max(0.1, parseFloat(uploadHrs) || 12);
+      var wakesPerDay   = 1440 / sampleMin;
+      var uploadsPerDay = 24   / uploadHrs;
+      var sensorMah  = wakesPerDay   * SENSOR_MA * SENSOR_ACTIVE_S / 3600;
+      var wifiMah    = uploadsPerDay * WIFI_MA   * WIFI_ACTIVE_S   / 3600;
+      var totalMah   = SLEEP_MAH_DAY + sensorMah + wifiMah + SELF_DISCHARGE_MAH;
+      return {
+        days:    Math.round(BATT_USABLE_MAH / totalMah),
+        mahDay:  Math.round(totalMah * 100) / 100,
+        sensorMah:  Math.round(sensorMah  * 100) / 100,
+        wifiMah:    Math.round(wifiMah    * 100) / 100
+      };
+    }
+
+    function updateBattEstUI() {
+      var sm  = parseInt(document.getElementById('cfgSampleMin').value)  || 10;
+      var uhr = parseInt(document.getElementById('cfgUploadHrs').value)  || 12;
+      var r   = calcBattDays(sm, uhr);
+      var yrs = (r.days / 365).toFixed(1);
+      document.getElementById('battEstVal').textContent    = '~' + r.days + ' days (~' + yrs + ' yrs)';
+      document.getElementById('battEstDetail').textContent =
+        r.mahDay + ' mAh/day  ·  sensor ' + r.sensorMah + '  WiFi ' + r.wifiMah + '  sleep+SD ' + (SLEEP_MAH_DAY + SELF_DISCHARGE_MAH).toFixed(2);
+    }
+
+    function fmtProjection(proj, sampleMin, uploadHrs){
       // Returns {text, cls, title} for the .projChip
-      if(!proj||proj.note==='insufficient_data') return {text:'',cls:'dim',title:'Not enough data yet (need 6+ h)'};
+      // When measured regression isn't ready, fall back to theoretical estimate
+      if(!proj || proj.note==='insufficient_data'){
+        var th = calcBattDays(sampleMin||10, uploadHrs||12);
+        return {
+          text:  '~'+th.days+' days',
+          cls:   'dim',
+          title: 'Theoretical estimate at '+( sampleMin||10)+'min/'+(uploadHrs||12)+'h settings · '+th.mahDay+' mAh/day · waiting for measured data'
+        };
+      }
       var d=proj.daysLeft, r2=proj.r2||0;
       var text= d>=1 ? '~'+Math.round(d)+' days' : '~'+Math.round(d*24)+' hrs';
       var cls = d<=3 ? 'warn' : (r2<0.5 ? 'dim' : '');
-      var title='~'+Math.round(d)+' days remaining · '+proj.drainPctPerDay+'%/day drain'+
+      var title='~'+Math.round(d)+' days remaining (measured) · '+proj.drainPctPerDay+'%/day drain'+
                 (proj.spanDays?' · based on '+proj.spanDays+'d of data':'');
       return {text:text, cls:cls, title:title};
     }
@@ -1245,7 +1295,7 @@
       el.querySelector('.stat').innerHTML=d.online?'<span class="on">online</span>':'<span class="offl">offline</span>';
       el.querySelector('.ago').textContent=ago(d.ageMs);
       var pChip=el.querySelector('.projChip');
-      if(pChip){ var pf=fmtProjection(d.battProj); pChip.textContent=pf.text; pChip.className='projChip'+(pf.cls?' '+pf.cls:''); pChip.title=pf.title; }
+      if(pChip){ var pf=fmtProjection(d.battProj,d.sampleMin,12); pChip.textContent=pf.text; pChip.className='projChip'+(pf.cls?' '+pf.cls:''); pChip.title=pf.title; }
     }
 
     // Hidden devices stored in localStorage
@@ -2412,6 +2462,7 @@
       document.getElementById('cfgLocation').value      = cfg.location  || '';
       document.getElementById('cfgSampleMin').value     = cfg.sampleMin || 5;
       document.getElementById('cfgUploadHrs').value     = cfg.uploadHrs || 6;
+      updateBattEstUI();
       document.getElementById('cfgUploadsEnabled').checked = (cfg.up!==0);
       document.getElementById('cfgSsid').value          = cfg.ssid      || '';
       document.getElementById('cfgPass').value          = '';
@@ -2499,6 +2550,8 @@
     document.getElementById('backFromConfig').onclick= function(){ history.back(); };
     document.getElementById('bleConnectBtn').onclick = bleConnect;
     document.getElementById('cfgSaveBtn').onclick    = bleSave;
+    document.getElementById('cfgSampleMin').addEventListener('input', updateBattEstUI);
+    document.getElementById('cfgUploadHrs').addEventListener('input', updateBattEstUI);
     document.getElementById('bleDiscoBtn').onclick   = bleDisconnect;
 
     // ════════════════════════════════════════════════════
@@ -2806,11 +2859,14 @@
         var projRow=document.createElement('div');
         projRow.className='arow';
         var projHTML='<span class="alabel">Battery life</span>';
-        if(!proj||proj.note==='insufficient_data'){
-          projHTML+='<span class="astat"><b>—</b><i>need 6+ h data</i></span>';
-        } else {
+        if(proj&&proj.daysLeft){
           var days=proj.daysLeft, dText=days>=1?'~'+Math.round(days)+' days':'~'+Math.round(days*24)+' hours';
-          projHTML+='<span class="astat"><b>'+dText+'</b><i>remaining</i></span>';
+          projHTML+='<span class="astat"><b>'+dText+'</b><i>measured</i></span>';
+        } else {
+          var sm=devObj?devObj.sampleMin:10;
+          var th=calcBattDays(sm,12);
+          projHTML+='<span class="astat"><b>~'+th.days+' days</b><i>theoretical</i></span>'+
+                    '<span class="astat"><b>'+th.mahDay+' mAh</b><i>per day</i></span>';
         }
         projRow.innerHTML=projHTML;
         card.appendChild(projRow);
