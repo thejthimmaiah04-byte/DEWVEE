@@ -97,6 +97,10 @@ const int REED_PIN = 2;   // Terminal A -> GND, B -> GPIO2, internal pull-up
 
 #define ENABLE_REED_WAKE 1
 
+#ifndef RGB_BUILTIN
+#define RGB_BUILTIN 8   // Waveshare ESP32-C6-Zero onboard WS2812 RGB LED
+#endif
+
 const float VBAT_DIVIDER  = 2.0f;
 const int   BURST_SAMPLES = 3;    // SHT45 high-precision takes 8.2 ms; 3 × 15 ms is enough
 #define uS_PER_MIN 60000000ULL
