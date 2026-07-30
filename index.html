@@ -286,6 +286,27 @@
     .atime{ display:block; font-size:9px; color:var(--muted); opacity:.7;
             margin-top:2px; font-weight:500; white-space:nowrap; }
 
+    /* battery projection block inside analytics card */
+    .battBlock{ flex:1; }
+    .battLine1{ display:flex; align-items:baseline; gap:6px; flex-wrap:wrap; }
+    .battDays{ font-size:15px; font-weight:700; line-height:1.2; }
+    .battDays.ok{ color:#4ec46a; }
+    .battDays.warn{ color:#e8a020; }
+    .battDays.crit{ color:#e05050; }
+    .battBadge{ display:inline-block; font-size:8px; font-weight:700;
+                text-transform:uppercase; letter-spacing:.08em;
+                padding:2px 6px; border-radius:4px; }
+    .battBadge.measured{ background:rgba(78,196,106,.15); color:#4ec46a; }
+    .battBadge.calibrating{ background:rgba(232,160,32,.15); color:#c48800; }
+    .battBadge.estimated{ background:rgba(128,128,128,.12); color:var(--muted); }
+    @media(prefers-color-scheme:dark){
+      .battBadge.calibrating{ color:#e8a020; }
+    }
+    :root[data-theme="dark"]  .battBadge.calibrating{ color:#e8a020; }
+    :root[data-theme="light"] .battBadge.calibrating{ color:#c48800; }
+    .battMeta{ font-size:10.5px; color:var(--muted); margin-top:3px; }
+    .battConf{ font-size:9px; color:var(--muted); opacity:.65; margin-top:2px; }
+
     /* export modal */
     .modalOverlay{ display:none; position:fixed; inset:0; z-index:60;
                    background:rgba(0,0,0,.45); align-items:center; justify-content:center;
@@ -1302,27 +1323,58 @@
         r.mahDay + ' mAh/day  ·  sensor ' + r.sensorMah + '  WiFi ' + r.wifiMah + '  sleep+SD ' + (SLEEP_MAH_DAY + SELF_DISCHARGE_MAH).toFixed(2);
     }
 
+    // Format a duration in ms as human-readable span (e.g. "2.3h", "4d")
+    function fmtSpanMs(ms){
+      if(!ms||ms<=0) return '';
+      if(ms < 3600000)  return Math.round(ms/60000)+'min';
+      if(ms < 86400000) return (ms/3600000).toFixed(1)+'h';
+      return (ms/86400000).toFixed(1)+'d';
+    }
+    // Format projected depletion timestamp for display
+    function fmtDeadBy(ms){
+      if(!ms||ms<=Date.now()) return '';
+      var daysLeft=(ms-Date.now())/86400000;
+      if(daysLeft<14) return 'in ~'+Math.round(daysLeft)+' days';
+      return new Date(ms).toLocaleDateString([],{month:'short',year:'numeric'});
+    }
+
     function fmtProjection(proj, sampleMin, uploadHrs){
-      // Returns {text, cls, title} for the .projChip
-      // Fall back to theoretical when regression not yet available
-      var noData = !proj || proj.note==='insufficient_data' || proj.note==='stable'
-                   || !proj.daysLeft || isNaN(proj.daysLeft);
-      if(noData){
-        var th = calcBattDays(sampleMin||10, uploadHrs||12);
+      // Returns {text, cls, title} for the .projChip on device tiles
+      var hasMeasured = proj && proj.daysLeft && !isNaN(proj.daysLeft);
+      var isCalib = proj && proj.note==='insufficient_data' && (proj.dataPoints||0)>=4;
+
+      if(hasMeasured){
+        var d=proj.daysLeft, r2=proj.r2||0;
+        var conf=proj.confidence||'low';
+        var dot=conf==='high'?'●':conf==='medium'?'◑':'○';
+        var dText=d>=1?'~'+Math.round(d)+'d':'~'+Math.round(d*24)+'h';
+        var drain=proj.drainPctPerDay?proj.drainPctPerDay+'%/d':'';
+        var cls=d<=7?'warn':(r2<0.5?'dim':'');
         return {
-          text:  '~'+th.days+'d · '+th.mahDay+' mAh/d',
-          cls:   'dim',
-          title: 'Theoretical · '+(sampleMin||10)+' min sample / '+(uploadHrs||12)+' h upload · '+
-                 th.mahDay+' mAh/day (sleep '+SLEEP_MAH_DAY+' + sensor '+th.sensorMah+' + WiFi '+th.wifiMah+' + self-disch '+SELF_DISCHARGE_MAH+')'
+          text: dText+' '+dot+(drain?' · '+drain:''),
+          cls:  cls,
+          title:'Measured · R²='+r2+' · '+(proj.dataPoints||0)+' readings · '+(proj.spanDays||0)+'d data'
         };
       }
-      var d=proj.daysLeft, r2=proj.r2||0;
-      var dText = d>=1 ? '~'+Math.round(d)+'d' : '~'+Math.round(d*24)+'h';
-      var text  = dText+' · '+proj.drainPctPerDay+'%/d';
-      var cls   = d<=3 ? 'warn' : (r2<0.5 ? 'dim' : '');
-      var title = '~'+Math.round(d)+' days remaining (measured voltage drain) · '+proj.drainPctPerDay+'%/day'+
-                  (proj.spanDays?' · based on '+proj.spanDays+'d of data':'');
-      return {text:text, cls:cls, title:title};
+      if(isCalib){
+        var th=calcBattDays(sampleMin||10, uploadHrs||12);
+        var span=fmtSpanMs(proj.spanMs||0);
+        return {
+          text: 'calibrating…',
+          cls:  'dim',
+          title:'Calibrating: '+(proj.dataPoints||0)+' readings'+(span?', '+span+' data':'')+
+                ' · theoretical: ~'+th.days+'d'
+        };
+      }
+      // Theoretical — no measured data yet
+      var th=calcBattDays(sampleMin||10, uploadHrs||12);
+      return {
+        text:  '~'+th.days+'d · '+th.mahDay+' mAh/d',
+        cls:   'dim',
+        title: 'Theoretical · '+(sampleMin||10)+'min sample / '+(uploadHrs||12)+'h upload · '+
+               th.mahDay+' mAh/day (sleep '+SLEEP_MAH_DAY+' + sensor '+th.sensorMah+
+               ' + WiFi '+th.wifiMah+' + self-disch '+SELF_DISCHARGE_MAH+')'
+      };
     }
     function applyCard(el, d, animate){
       el.classList.toggle('sel', state.selected.has(d.device));
@@ -2907,20 +2959,62 @@
         // Battery projection row
         var devObj=state.devices.filter(function(d){return d.device===dev;})[0];
         var proj=devObj&&devObj.battProj;
+        var ssec=devObj?(devObj.sampleSec||devObj.sampleMin*60||600):600;
+        var usec=devObj?(devObj.uploadSec||43200):43200;
         var projRow=document.createElement('div');
         projRow.className='arow';
-        var projHTML='<span class="alabel">Battery life</span>';
-        if(proj&&proj.daysLeft){
-          var days=proj.daysLeft, dText=days>=1?'~'+Math.round(days)+' days':'~'+Math.round(days*24)+' hours';
-          projHTML+='<span class="astat"><b>'+dText+'</b><i>measured</i></span>';
+        var projInner='';
+
+        var hasMeasured=proj&&proj.daysLeft&&!isNaN(proj.daysLeft);
+        var isCalib=proj&&proj.note==='insufficient_data'&&(proj.dataPoints||0)>=4;
+
+        if(hasMeasured){
+          var days=proj.daysLeft;
+          var dText=days>=1?'~'+Math.round(days)+' days':'~'+Math.round(days*24)+' hours';
+          var urgency=days<14?'crit':days<30?'warn':'ok';
+          var conf=proj.confidence||'low';
+          var dot=conf==='high'?'●':conf==='medium'?'◑':'○';
+          var drain=proj.drainPctPerDay?(proj.drainPctPerDay+'%/day'+(proj.drainMahPerDay?' · '+proj.drainMahPerDay+' mAh/day':'')):'';
+          var deadStr=proj.deadByMs?fmtDeadBy(proj.deadByMs):'';
+          var r2Str=proj.r2!=null?'R²='+proj.r2:'';
+          var spanStr=proj.spanDays?(proj.spanDays+'d of data'):'';
+          var ptsStr=proj.dataPoints?(proj.dataPoints+' readings'):'';
+          var voltStr=proj.currentVolt?(proj.currentVolt+'V'):'';
+          projInner='<div class="battBlock">'+
+            '<div class="battLine1">'+
+              '<span class="battDays '+urgency+'">'+dText+'</span>'+
+              '<span class="battBadge measured">measured '+dot+'</span>'+
+            '</div>'+
+            (drain||deadStr?'<div class="battMeta">'+drain+(deadStr?' · dies '+deadStr:'')+'</div>':'')+
+            '<div class="battConf">'+ [r2Str,spanStr,ptsStr,voltStr].filter(Boolean).join(' · ')+'</div>'+
+          '</div>';
+
+        } else if(isCalib){
+          var th=calcBattDays(ssec/60,usec/3600);
+          var ptsStr=(proj.dataPoints||0)+' readings';
+          var spanStr=fmtSpanMs(proj.spanMs||0);
+          projInner='<div class="battBlock">'+
+            '<div class="battLine1">'+
+              '<span class="battDays" style="color:var(--muted)">Calibrating…</span>'+
+              '<span class="battBadge calibrating">measuring</span>'+
+            '</div>'+
+            '<div class="battMeta">'+ptsStr+(spanStr?' · '+spanStr+' collected':'')+'</div>'+
+            '<div class="battConf">theoretical ~'+th.days+'d · '+th.mahDay+' mAh/day</div>'+
+          '</div>';
+
         } else {
-          var ssec = devObj ? (devObj.sampleSec || devObj.sampleMin*60 || 600) : 600;
-          var usec = devObj ? (devObj.uploadSec || 43200) : 43200;
-          var th   = calcBattDays(ssec/60, usec/3600);
-          projHTML+='<span class="astat"><b>~'+th.days+' days</b><i>theoretical</i></span>'+
-                    '<span class="astat"><b>'+th.mahDay+' mAh</b><i>per day</i></span>';
+          var th=calcBattDays(ssec/60,usec/3600);
+          projInner='<div class="battBlock">'+
+            '<div class="battLine1">'+
+              '<span class="battDays" style="color:var(--muted)">~'+th.days+' days</span>'+
+              '<span class="battBadge estimated">estimated</span>'+
+            '</div>'+
+            '<div class="battMeta">'+th.mahDay+' mAh/day · based on settings</div>'+
+            '<div class="battConf">no voltage history yet — will auto-update</div>'+
+          '</div>';
         }
-        projRow.innerHTML=projHTML;
+
+        projRow.innerHTML='<span class="alabel">Battery life</span>'+projInner;
         card.appendChild(projRow);
       });
     };
