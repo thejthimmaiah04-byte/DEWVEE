@@ -38,6 +38,7 @@ function getOrCreateSheet_(name) {
       sh.appendRow(['Device', 'Location', 'SampleMin', 'FirstSeen',
                     'LastSeen', 'LastTemp', 'LastHum', 'LastPct', 'UploadSec']);
       sh.getRange(1, 1, 1, 9).setFontWeight('bold');
+      sh.getRange('D2:E').setNumberFormat('yyyy-MM-dd HH:mm:ss');
     }
   }
   return sh;
@@ -53,6 +54,9 @@ function getOrCreateDeviceSheet_(deviceName) {
                   'Battery%', 'Voltage']);
     sh.getRange(1, 1, 1, 6).setFontWeight('bold');
   }
+  // Ensure the timestamp column always shows date + time, not just the date.
+  // Applied on every call so existing sheets are fixed automatically.
+  sh.getRange('A2:A').setNumberFormat('yyyy-MM-dd HH:mm:ss');
   return sh;
 }
 
