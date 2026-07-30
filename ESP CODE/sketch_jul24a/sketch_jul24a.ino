@@ -7,13 +7,16 @@
  *  Power : Samsung INR18650-35E via protected TP4056 -> board VIN
  *
  *  Behaviour:
- *   - Wakes every N minutes from deep sleep (default 5).
+ *   - Wakes every N minutes from deep sleep (default 10).
  *   - Before first registration: attempts one upload per wake; retries
  *     every N minutes until the first row lands on the sheet.
- *   - After registration: reads SHT45 in an averaged burst, reads
+ *   - After registration: reads SHT45 in a 3-sample burst, reads
  *     battery on EVERY wake, timestamps via RTC-advanced clock, and
  *     buffers in RTC memory.  WiFi touched only at upload intervals
- *     (default every 6 h / 72 readings).  Drift-corrected at sync.
+ *     (default every 12 h / 72 readings).  Drift-corrected at sync.
+ *   - BSSID + channel are cached in RTC RAM after each successful
+ *     connect, cutting reconnect time from ~8 s to ~2 s.  Cache is
+ *     invalidated on credential change or failed connect.
  *   - Battery protection: below 3.20 V the pod blinks red twice and
  *     sleeps for 60 min to prevent deep-discharge cell damage.
  *     Recovers automatically once voltage rises above 3.50 V.
@@ -24,6 +27,12 @@
  *     in every POST so the Apps Script can authenticate requests.
  *   - Location label: human-readable placement tag ("Server Room")
  *     stored in NVS, included in every upload for the dashboard.
+ *
+ *  Power budget (3000 mAh, 10 min / 12 h defaults):
+ *   Deep sleep  ~3.5 mAh/day  (150 µA board quiescent)
+ *   Sampling    ~0.5 mAh/day  (40 MHz, 3-sample burst, 144 wakes)
+ *   WiFi        ~2.5 mAh/day  (2 sessions × ~15 s with BSSID cache)
+ *   Total       ~6.5 mAh/day  →  ~370 days on 2400 mAh usable
  *
  *  Libraries (Arduino Library Manager):
  *   - Adafruit SHT4x Library + Adafruit Unified Sensor
@@ -53,8 +62,8 @@
 #define DEFAULT_SSID        ""           // set via BLE on first use
 #define DEFAULT_PASS        ""           // set via BLE on first use
 #define DEFAULT_URL         "https://script.google.com/macros/s/AKfycbw88DpkYijK98qTzhlSguLAFxFRQI_H3KXreYcRp2sitSr3XWFPRz9QwR88ocdsRsO7/exec"
-#define DEFAULT_SAMPLE_MIN  5
-#define DEFAULT_UPLOAD_HRS  6
+#define DEFAULT_SAMPLE_MIN  10   // 10 min → 144 readings/day; tuned for 6-month battery life
+#define DEFAULT_UPLOAD_HRS  12   // 12 h  → 2 WiFi sessions/day
 
 struct Config {
   String   name;
@@ -89,7 +98,7 @@ const int REED_PIN = 2;   // Terminal A -> GND, B -> GPIO2, internal pull-up
 #define ENABLE_REED_WAKE 1
 
 const float VBAT_DIVIDER  = 2.0f;
-const int   BURST_SAMPLES = 10;
+const int   BURST_SAMPLES = 3;    // SHT45 high-precision takes 8.2 ms; 3 × 15 ms is enough
 #define uS_PER_MIN 60000000ULL
 
 // -------- RTC-persisted state (survives deep sleep) --------
@@ -103,15 +112,19 @@ typedef struct {
 
 #define BUFFER_CAPACITY 216
 RTC_DATA_ATTR Reading  buffer[BUFFER_CAPACITY];
-RTC_DATA_ATTR uint16_t bufCount       = 0;
-RTC_DATA_ATTR uint32_t bootCount      = 0;
-RTC_DATA_ATTR bool     timeSynced     = false;
-RTC_DATA_ATTR uint32_t lastSyncEpoch  = 0;
-RTC_DATA_ATTR bool     registered     = false;
-RTC_DATA_ATTR float    lastVbat       = 0;
-RTC_DATA_ATTR uint8_t  lastPct        = 0;
-RTC_DATA_ATTR bool     pendingWifiTest= false;  // set before restart after BLE cred change
-RTC_DATA_ATTR bool     batteryDead    = false;  // set when Vbat < 3.20V; clears at 3.50V
+RTC_DATA_ATTR uint16_t bufCount        = 0;
+RTC_DATA_ATTR uint32_t bootCount       = 0;
+RTC_DATA_ATTR bool     timeSynced      = false;
+RTC_DATA_ATTR uint32_t lastSyncEpoch   = 0;
+RTC_DATA_ATTR bool     registered      = false;
+RTC_DATA_ATTR float    lastVbat        = 0;
+RTC_DATA_ATTR uint8_t  lastPct         = 0;
+RTC_DATA_ATTR bool     pendingWifiTest = false;  // set before restart after BLE cred change
+RTC_DATA_ATTR bool     batteryDead     = false;  // set when Vbat < 3.20V; clears at 3.50V
+// BSSID + channel cache: skip AP scan on reconnect, cuts connect time by 3–8 s
+RTC_DATA_ATTR uint8_t  cachedBssid[6]  = {0};
+RTC_DATA_ATTR uint8_t  cachedChannel   = 0;
+RTC_DATA_ATTR bool     bssidCached     = false;
 
 Adafruit_SHT4x sht = Adafruit_SHT4x();
 
@@ -150,7 +163,8 @@ void goToSleep() {
 
 // -------- Sensor --------
 bool readSensor(float &tOut, float &hOut) {
-  delay(200);   // brief settle after I2C init / cold-start transient
+  delay(50);    // 50 ms settle — SHT45 is ready within 1 ms of power-on; 50 ms covers
+                // any I2C bus glitch without the old 200 ms waste
   sensors_event_t humidity, temp;
   float tSum = 0, hSum = 0;
   int   n = 0;
@@ -158,7 +172,7 @@ bool readSensor(float &tOut, float &hOut) {
     sht.getEvent(&humidity, &temp);
     float t = temp.temperature, h = humidity.relative_humidity;
     if (!isnan(t) && !isnan(h)) { tSum += t; hSum += h; n++; }
-    delay(50);
+    if (i < BURST_SAMPLES - 1) delay(15);  // 15 ms > SHT45 high-precision measurement time
   }
   if (n == 0) return false;
   tOut = tSum / n;
@@ -173,7 +187,7 @@ const float VBAT_CALIBRATION = 4.22f / 4.090f;
 
 float readBatteryVolts() {
   analogSetPinAttenuation(VBAT_PIN, ADC_11db);
-  const int N = 32;
+  const int N = 16;   // 16 samples (down from 32) — quartile trim still removes outliers
   uint32_t samples[N];
   for (int i = 0; i < N; i++) { samples[i] = analogReadMilliVolts(VBAT_PIN); delay(2); }
   // insertion sort then trim quartiles
@@ -216,11 +230,30 @@ void pushReading(uint32_t epoch, float t, float h, float v, uint8_t pct) {
 
 // -------- WiFi / NTP --------
 bool connectWiFi(uint32_t timeoutMs) {
+  setCpuFrequencyMhz(80);   // WiFi requires ≥ 80 MHz
   WiFi.mode(WIFI_STA);
-  WiFi.begin(cfg.ssid.c_str(), cfg.pass.c_str());
+  WiFi.setSleep(false);     // disable modem sleep during connect burst (speeds up DHCP)
+  if (bssidCached) {
+    // Fast path: supply cached BSSID + channel to skip the AP scan entirely
+    WiFi.begin(cfg.ssid.c_str(), cfg.pass.c_str(), cachedChannel, cachedBssid);
+  } else {
+    WiFi.begin(cfg.ssid.c_str(), cfg.pass.c_str());
+  }
   uint32_t start = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - start < timeoutMs) delay(100);
-  return WiFi.status() == WL_CONNECTED;
+  bool ok = (WiFi.status() == WL_CONNECTED);
+  if (ok) {
+    // Cache BSSID + channel for the next wake — persists through deep sleep in RTC RAM
+    memcpy(cachedBssid, WiFi.BSSID(), 6);
+    cachedChannel = (uint8_t)WiFi.channel();
+    bssidCached   = true;
+  } else if (bssidCached) {
+    // Cached info may be stale (AP rebooted, roamed); clear it so next attempt does a scan
+    bssidCached = false;
+    memset(cachedBssid, 0, 6);
+    cachedChannel = 0;
+  }
+  return ok;
 }
 
 bool syncNTP(uint32_t timeoutMs) {
@@ -362,7 +395,12 @@ void applyConfigJson(const String& json) {
     String k = doc["key"].as<String>(); if (k.length()) cfg.uploadKey = k;
   }
 
-  if (cfg.ssid != oldSsid || cfg.pass != oldPass) wifiCredChanged = true;
+  if (cfg.ssid != oldSsid || cfg.pass != oldPass) {
+    wifiCredChanged = true;
+    bssidCached = false;   // force fresh AP scan on new credentials
+    memset(cachedBssid, 0, 6);
+    cachedChannel = 0;
+  }
   if (cfg.sampleMin < 1) cfg.sampleMin = 1;
   if (cfg.uploadHrs < 1) cfg.uploadHrs = 1;
   saveConfig();
@@ -465,7 +503,7 @@ void runConfigMode() {
 //  MAIN
 // ================================================================
 void setup() {
-  setCpuFrequencyMhz(80);
+  setCpuFrequencyMhz(40);   // 40 MHz for all non-WiFi work saves ~8 mA vs 80 MHz
   ledOff();
   Serial.begin(115200);
   delay(50);
