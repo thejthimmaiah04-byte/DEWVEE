@@ -58,7 +58,7 @@
 #include <BLEUtils.h>
 
 // -------- DEFAULTS (first boot only — configure via BLE) --------
-#define DEFAULT_NAME        "DEWVEE:03"
+#define DEFAULT_NAME        "DEWVEE"
 #define DEFAULT_SSID        ""           // set via BLE on first use
 #define DEFAULT_PASS        ""           // set via BLE on first use
 #define DEFAULT_URL         "https://script.google.com/macros/s/AKfycbw88DpkYijK98qTzhlSguLAFxFRQI_H3KXreYcRp2sitSr3XWFPRz9QwR88ocdsRsO7/exec"
