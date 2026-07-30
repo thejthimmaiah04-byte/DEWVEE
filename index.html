@@ -145,10 +145,8 @@
     .devLegendDot{ width:8px; height:8px; border-radius:50%; flex:none; }
     .devLegendLine{ border-radius:2px; flex:none; background:var(--muted); opacity:.55; width:18px; }
     .chartwrap{ position:relative; width:100%; height:clamp(240px,46vh,560px); }
-    .chartwrap canvas{ position:absolute; inset:0; width:100% !important; height:100% !important; touch-action:none; }
-    @keyframes hintFade{ to{ opacity:0; pointer-events:none; } }
-    .hint{ color:var(--muted); font-size:12px; text-align:center; padding:14px 6px 2px;
-           animation:hintFade 1.5s 10s forwards; }
+    .chartwrap canvas{ position:absolute; inset:0; width:100% !important; height:100% !important; touch-action:pan-y; }
+    .hint{ color:var(--muted); font-size:12px; text-align:center; padding:14px 6px 2px; transition:opacity .3s; }
 
     /* card / analytics-card entrance */
     @keyframes riseIn{ from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none} }
@@ -355,7 +353,7 @@
       #cmpBar{ overflow-x:auto; flex-wrap:nowrap; scrollbar-width:none; padding-bottom:12px; }
       #cmpBar::-webkit-scrollbar{ display:none; }
       /* chart — keep landscape ratio, not square */
-      .chartwrap{ height:clamp(180px,56vw,250px); }
+      .chartwrap{ height:clamp(220px,58vw,320px); }
       /* analytics */
       .analytics{ grid-template-columns:1fr; }
       .arow .alabel{ width:90px; }
@@ -367,7 +365,7 @@
     .splitPanelTitle{ font-size:11px; font-weight:700; color:var(--muted);
                       text-transform:uppercase; letter-spacing:.07em; padding:0 2px 6px; }
     .splitPanel .chartwrap{ height:clamp(140px,27vh,300px); }
-    @media(max-width:520px){ .splitPanel .chartwrap{ height:clamp(120px,36vw,185px); } }
+    @media(max-width:520px){ .splitPanel .chartwrap{ height:clamp(160px,42vw,250px); } }
     /* ── configure / BLE view ── */
     .cfgConnectBox{ background:var(--card); border:1px solid var(--line); border-radius:16px;
                     padding:36px 24px; text-align:center; box-shadow:var(--sh-1); margin-bottom:18px; }
@@ -463,6 +461,14 @@
                  border-radius:14px; padding:12px 16px; pointer-events:none; box-shadow:var(--sh-2);
                  min-width:150px; }
     .cmpTooltip.hide{ display:none; }
+    #cmpTouchStrip{ display:none; }
+    @media(hover:none) and (pointer:coarse){
+      #cmpTouchStrip{ display:flex; flex-wrap:wrap; align-items:center; gap:5px 14px;
+                      padding:8px 12px 7px; background:var(--card);
+                      border-top:1px solid var(--line); border-radius:0 0 10px 10px;
+                      min-height:30px; font-size:13px; }
+      #cmpTouchStrip.hide{ visibility:hidden; min-height:0; padding:0; overflow:hidden; }
+    }
     .cmpTipTime{ font-size:10px; font-weight:700; color:var(--muted); text-transform:uppercase;
                  letter-spacing:.07em; padding-bottom:8px; margin-bottom:8px;
                  border-bottom:1px solid var(--line); }
@@ -689,6 +695,7 @@
       <div class="devLegend hide" id="cmpDevLegend"></div>
       <div class="chartwrap"><canvas id="cmpChart"></canvas></div>
       <div class="cmpBadge hide" id="cmpBadge" style="font-size:11px;color:var(--muted);padding:6px 2px 2px"></div>
+      <div id="cmpTouchStrip" class="hide"></div>
     </div>
     <div id="cmpTooltip" class="cmpTooltip hide"></div>
     <div class="hint">Select Dewvees above · pinch to zoom · drag to pan</div>
@@ -1421,7 +1428,7 @@
             }
           }},
           zoom:{
-            pan:{ enabled:true, mode:'x', onPanComplete:function(){ toggleResetLink(true); } },
+            pan:{ enabled:true, mode:'x', threshold:8, onPanComplete:function(){ toggleResetLink(true); } },
             zoom:{ wheel:{enabled:true, modifierKey:'ctrl'}, pinch:{enabled:true}, mode:'x', onZoomComplete:function(){ toggleResetLink(true); } }
           }
         }
@@ -1489,7 +1496,7 @@
             }
           } },
           zoom:{
-            pan:{ enabled:true, mode:'x', onPanComplete:function(){ toggleResetLink(true); } },
+            pan:{ enabled:true, mode:'x', threshold:8, onPanComplete:function(){ toggleResetLink(true); } },
             zoom:{ wheel:{enabled:true, modifierKey:'ctrl'}, pinch:{enabled:true}, mode:'x', onZoomComplete:function(){ toggleResetLink(true); } }
           }
         }
@@ -1862,7 +1869,7 @@
           legend:{ display:false },
           tooltip:{ enabled:false, external:cmpTooltipExternal },
           zoom:{
-            pan:{ enabled:true, mode:'x', onPanComplete:function(){ toggleCmpResetLink(true); } },
+            pan:{ enabled:true, mode:'x', threshold:8, onPanComplete:function(){ toggleCmpResetLink(true); } },
             zoom:{ wheel:{enabled:true, modifierKey:'ctrl'}, pinch:{enabled:true}, mode:'x', onZoomComplete:function(){ toggleCmpResetLink(true); } }
           }
         }
@@ -1884,8 +1891,10 @@
         lastTap=now;
       });
     }
-    addDoubleTapReset('chart',    function(){ return chart; },    toggleResetLink);
-    addDoubleTapReset('cmpChart', function(){ return cmpChart; }, toggleCmpResetLink);
+    addDoubleTapReset('chart',         function(){ return chart; },         toggleResetLink);
+    addDoubleTapReset('cmpChart',      function(){ return cmpChart; },      toggleCmpResetLink);
+    addDoubleTapReset('chartSplitTemp',function(){ return chartSplitTemp; },toggleResetLink);
+    addDoubleTapReset('chartSplitHum', function(){ return chartSplitHum; }, toggleResetLink);
 
     function syncCmpChipStates(){
       document.querySelectorAll('#cmpChips .podChip').forEach(function(c){
@@ -2007,6 +2016,73 @@
     document.getElementById('cmpChart').addEventListener('mouseleave', function(){
       var t=document.getElementById('cmpTooltip'); if(t) t.classList.add('hide');
     });
+
+    // Compare chart touch strip — shows device values while finger is on chart
+    (function(){
+      var canvas=document.getElementById('cmpChart');
+      var strip=document.getElementById('cmpTouchStrip');
+      if(!canvas||!strip) return;
+      var hideTimer;
+      canvas.addEventListener('touchmove', function(e){
+        if(!cmpChart) return;
+        var touch=e.touches[0];
+        var rect=canvas.getBoundingClientRect();
+        var x=touch.clientX-rect.left;
+        var ca=cmpChart.chartArea;
+        if(x<ca.left||x>ca.right){ return; }
+        var xVal=cmpChart.scales.x.getValueForPixel(x);
+        var byDev={}, order=[];
+        cmpChart.data.datasets.forEach(function(ds){
+          var dev=ds._podDev; if(!dev||ds._isCmp) return;
+          if(!byDev[dev]){ byDev[dev]={clr:ds._devIdentityColor||'#aaa',t:null,h:null}; order.push(dev); }
+          var pts=ds.data; if(!pts||!pts.length) return;
+          var best=null, bestDist=Infinity;
+          pts.forEach(function(p){ var d=Math.abs(p.x-xVal); if(d<bestDist){ bestDist=d; best=p; } });
+          if(!best) return;
+          if(ds._isHum) byDev[dev].h=best.y; else byDev[dev].t=best.y;
+        });
+        if(!order.length) return;
+        var showT=cmpViewState.metrics.temp, showH=cmpViewState.metrics.hum;
+        var html='';
+        order.forEach(function(dev){
+          var d=byDev[dev];
+          html+='<span style="display:inline-flex;align-items:center;gap:5px;">'+
+            '<span style="width:8px;height:8px;border-radius:50%;background:'+d.clr+';flex:none"></span>'+
+            '<span style="font-weight:600">'+esc(dev)+'</span>';
+          if(showT) html+='<span>'+(d.t!=null?d.t.toFixed(1)+'°':'—')+'</span>';
+          if(showH) html+='<span style="color:var(--hum)">'+(d.h!=null?d.h.toFixed(0)+'%':'—')+'</span>';
+          html+='</span>';
+        });
+        strip.innerHTML=html;
+        strip.classList.remove('hide');
+        clearTimeout(hideTimer);
+      }, {passive:true});
+      canvas.addEventListener('touchend', function(){
+        clearTimeout(hideTimer);
+        hideTimer=setTimeout(function(){ strip.classList.add('hide'); }, 1500);
+      }, {passive:true});
+    })();
+
+    // Hint auto-hide then briefly reappear after 60s of touch inactivity
+    (function(){
+      var hints=document.querySelectorAll('.hint');
+      var lastTouch=Date.now(), hidden=false;
+      function hideHints(){
+        hidden=true;
+        hints.forEach(function(h){ h.style.opacity='0'; h.style.pointerEvents='none'; });
+      }
+      function flashHints(){
+        hints.forEach(function(h){ h.style.opacity='1'; h.style.pointerEvents=''; });
+        hidden=false;
+        setTimeout(hideHints, 3000);
+      }
+      setTimeout(hideHints, 10000);
+      document.addEventListener('touchstart', function(){
+        var now=Date.now();
+        if(hidden && now-lastTouch>60000) flashHints();
+        lastTouch=now;
+      }, {passive:true});
+    })();
     document.getElementById('cmpResetZoom').onclick=function(){ if(cmpChart) cmpChart.resetZoom(); toggleCmpResetLink(false); };
 
     document.getElementById('cmpRanges').addEventListener('click',function(e){
