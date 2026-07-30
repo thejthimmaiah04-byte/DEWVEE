@@ -2,8 +2,8 @@
 //  DEWVEE  —  Google Apps Script backend
 // ================================================================
 //  Sheet layout (auto-created):
-//    "Data"    — all sensor readings, one row per reading
-//    "Devices" — one row per unique device: metadata + last seen
+//    "<DeviceName>" — one sheet per device, all readings for that device
+//    "Devices"      — one row per unique device: metadata + last seen
 //
 //  Properties (Project Properties → Script Properties):
 //    UPLOAD_KEY     optional shared secret; if set, every POST must
@@ -34,15 +34,24 @@ function getOrCreateSheet_(name) {
   var sh = ss.getSheetByName(name);
   if (!sh) {
     sh = ss.insertSheet(name);
-    if (name === DATA_SHEET) {
-      sh.appendRow(['Timestamp', 'Device', 'Temperature', 'Humidity',
-                    'Battery%', 'Voltage']);
-      sh.getRange(1, 1, 1, 6).setFontWeight('bold');
-    } else if (name === DEVICES_SHEET) {
+    if (name === DEVICES_SHEET) {
       sh.appendRow(['Device', 'Location', 'SampleMin', 'FirstSeen',
                     'LastSeen', 'LastTemp', 'LastHum', 'LastPct']);
       sh.getRange(1, 1, 1, 8).setFontWeight('bold');
     }
+  }
+  return sh;
+}
+
+// Returns the per-device data sheet, creating it with headers if needed.
+function getOrCreateDeviceSheet_(deviceName) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(deviceName);
+  if (!sh) {
+    sh = ss.insertSheet(deviceName);
+    sh.appendRow(['Timestamp', 'Device', 'Temperature', 'Humidity',
+                  'Battery%', 'Voltage']);
+    sh.getRange(1, 1, 1, 6).setFontWeight('bold');
   }
   return sh;
 }
@@ -105,10 +114,10 @@ function doPost(e) {
       return out;
     }
 
-    // ── Write to Data sheet ───────────────────────────────────────
-    var dataSheet = getOrCreateSheet_(DATA_SHEET);
-    dataSheet.getRange(dataSheet.getLastRow() + 1, 1, valid.length, 6)
-             .setValues(valid);
+    // ── Write to per-device sheet ─────────────────────────────────
+    var devDataSheet = getOrCreateDeviceSheet_(device);
+    devDataSheet.getRange(devDataSheet.getLastRow() + 1, 1, valid.length, 6)
+                .setValues(valid);
 
     // ── Update / insert Devices sheet row ────────────────────────
     var devSheet = getOrCreateSheet_(DEVICES_SHEET);
@@ -546,11 +555,10 @@ function sendDailyExport() {
     }
     if (!emails.length) { sp.setProperty('EXPORT_STATUS','No recipients configured'); return; }
 
-    // Build CSV for the last 7 days
-    var sheet = getOrCreateSheet_(DATA_SHEET);
-    var data  = sheet.getDataRange().getValues();
-    var from  = Date.now() - 7 * 86400e3;
-    var rows  = [['Timestamp','Device','Location','Temperature(C)','Humidity(%)','Battery(%)','Voltage(V)']];
+    // Build CSV for the last 7 days — scan all device sheets
+    var from    = Date.now() - 7 * 86400e3;
+    var scan    = scanAllSheets_({ fromMs: from, toMs: Date.now() });
+    var rows    = [['Timestamp','Device','Location','Temperature(C)','Humidity(%)','Battery(%)','Voltage(V)']];
 
     // Build device → location map
     var locMap = {};
@@ -560,17 +568,18 @@ function sendDailyExport() {
         locMap[devData[r][DEV.DEVICE-1]] = devData[r][DEV.LOCATION-1] || '';
     } catch(e) {}
 
-    for (var i = 1; i < data.length; i++) {
-      var row = data[i];
-      var ts  = new Date(row[DC.TS - 1]);
-      if (ts.getTime() < from) continue;
-      rows.push([
-        Utilities.formatDate(ts, 'UTC', 'yyyy-MM-dd HH:mm:ss'),
-        row[DC.DEVICE - 1],
-        locMap[row[DC.DEVICE - 1]] || '',
-        row[DC.TEMP - 1], row[DC.HUM - 1], row[DC.PCT - 1], row[DC.VOLT - 1]
-      ]);
+    for (var dev in scan.series) {
+      scan.series[dev].forEach(function(pt) {
+        var ts = new Date(from + pt.t);
+        rows.push([
+          Utilities.formatDate(ts, 'UTC', 'yyyy-MM-dd HH:mm:ss'),
+          dev,
+          locMap[dev] || '',
+          pt.temp, pt.hum, pt.pct, pt.v
+        ]);
+      });
     }
+    rows.sort(function(a, b) { return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0; });
 
     var csv = rows.map(function(r) {
       return r.map(function(c) { return '"' + String(c).replace(/"/g,'""') + '"'; }).join(',');
