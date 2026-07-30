@@ -174,19 +174,86 @@ function parseRangeMs_(range) {
   return ms[range] || 86400e3;
 }
 
+function computeBatteryProjection_(readings) {
+  // readings: [{ts:ms, pct:number}] sorted ascending — all readings for this device
+  if (!readings || readings.length < 4) return null;
+
+  // Walk backward to find last recharge event (pct rise > 5 pp)
+  var startIdx = 0;
+  for (var i = readings.length - 1; i > 0; i--) {
+    if (readings[i].pct - readings[i - 1].pct > 5) { startIdx = i; break; }
+  }
+  var pts = readings.slice(startIdx);
+  if (pts.length < 4) return null;
+
+  var spanMs = pts[pts.length - 1].ts - pts[0].ts;
+  if (spanMs < 6 * 3600000) return { note: 'insufficient_data' };
+
+  // Linear regression: x = hours elapsed, y = pct
+  var t0 = pts[0].ts;
+  var n = pts.length, sx=0, sy=0, sxy=0, sxx=0;
+  for (var j = 0; j < n; j++) {
+    var x = (pts[j].ts - t0) / 3600000;
+    var y = pts[j].pct;
+    sx += x; sy += y; sxy += x*y; sxx += x*x;
+  }
+  var mx = sx/n, my = sy/n;
+  var ssxy = sxy - n*mx*my, ssxx = sxx - n*mx*mx;
+  if (ssxx < 0.001 || ssxy >= 0) return { note: 'stable' }; // not draining
+
+  var slope = ssxy / ssxx; // pct/hour (negative)
+  var intercept = my - slope * mx;
+
+  // R² — how clean the discharge trend is
+  var ssRes = 0, ssTot = 0;
+  for (var k = 0; k < n; k++) {
+    var pred = slope * ((pts[k].ts - t0) / 3600000) + intercept;
+    ssRes += Math.pow(pts[k].pct - pred, 2);
+    ssTot += Math.pow(pts[k].pct - my,   2);
+  }
+  var r2 = ssTot > 0.001 ? 1 - ssRes / ssTot : 0;
+
+  var drainPerHour = -slope;              // positive %/h
+  if (drainPerHour < 0.001) return { note: 'stable' };
+
+  var currentPct  = pts[pts.length - 1].pct;
+  var hoursLeft   = currentPct / drainPerHour;
+  var daysLeft    = hoursLeft / 24;
+  var drainPerDay = drainPerHour * 24;
+
+  return {
+    daysLeft:      Math.round(daysLeft    * 10) / 10,
+    drainPctPerDay:Math.round(drainPerDay * 10) / 10,
+    r2:            Math.round(r2          * 100) / 100,
+    dataPoints:    n,
+    spanDays:      Math.round(spanMs / 86400000 * 10) / 10
+  };
+}
+
 function getDevicesData_() {
   var devSheet  = getOrCreateSheet_(DEVICES_SHEET);
   var dataSheet = getOrCreateSheet_(DATA_SHEET);
   var devData   = devSheet.getDataRange().getValues();
   var now       = Date.now();
   var result    = [];
-  // Build a quick device→last-volt lookup from the data sheet
-  var voltMap   = {};
+  // Single pass over Data sheet: build volt map and per-device pct history
+  var voltMap      = {};
+  var readingsMap  = {};
   try {
     var allD = dataSheet.getDataRange().getValues();
     for (var ri = 1; ri < allD.length; ri++) {
       var dev = String(allD[ri][DC.DEVICE - 1]);
       voltMap[dev] = parseFloat(allD[ri][DC.VOLT - 1]) || 0;
+      var ts  = new Date(allD[ri][DC.TS   - 1]).getTime();
+      var pct = parseInt(allD[ri][DC.PCT  - 1]);
+      if (!isNaN(pct) && pct >= 0 && pct <= 100 && ts > 0) {
+        if (!readingsMap[dev]) readingsMap[dev] = [];
+        readingsMap[dev].push({ ts: ts, pct: pct });
+      }
+    }
+    // Sort each device's history ascending (sheet may not be perfectly ordered)
+    for (var d in readingsMap) {
+      readingsMap[d].sort(function(a,b){ return a.ts - b.ts; });
     }
   } catch(e2) {}
 
@@ -214,7 +281,8 @@ function getDevicesData_() {
       ts:        Math.floor(tsMs / 1000),
       lowBatt:   parseInt(lastPct) <= 20,
       ageMs:     tsMs > 0 ? now - tsMs : Infinity,
-      online:    tsMs > 0 && (now - tsMs) < sampleMin * 2.5 * 60 * 1000
+      online:    tsMs > 0 && (now - tsMs) < sampleMin * 2.5 * 60 * 1000,
+      battProj:  computeBatteryProjection_(readingsMap[String(device)] || null)
     });
   }
   return { devices: result };

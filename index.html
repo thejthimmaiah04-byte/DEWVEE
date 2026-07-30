@@ -96,6 +96,11 @@
     .cardNav.dimmed{ opacity:.3; pointer-events:none; }
     .cardLoc{ font-size:10px; color:var(--muted); margin:1px 0 4px;
               overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .projChip{ display:inline-block; font-size:9.5px; font-weight:700; letter-spacing:.02em;
+               padding:2px 6px; border-radius:6px; margin-left:4px; vertical-align:middle;
+               background:rgba(94,180,120,.15); color:#4caf7a; white-space:nowrap; }
+    .projChip.warn{ background:rgba(229,72,77,.13); color:var(--bad); }
+    .projChip.dim{ background:transparent; color:var(--muted); font-weight:400; }
     .cardHideBtn{ position:absolute; top:8px; right:8px; font-size:10px; font-weight:700;
                   background:rgba(229,72,77,.15); border:1px solid rgba(229,72,77,.3);
                   color:var(--bad); border-radius:7px; padding:3px 7px; cursor:pointer;
@@ -1204,12 +1209,28 @@
           '<span class="bchip">'+
             '<span class="bicon"><i class="bfill"></i></span>'+
             '<span class="bwrap"><span class="bval">0</span>%</span>'+
+            '<span class="projChip dim" title="Projected battery life remaining"></span>'+
           '</span>'+
         '</div>'+
         '<div class="cardLoc"></div>'+
         '<div class="temp"><span class="tval">0</span><span class="u">°</span></div>'+
         '<div class="hum"><span class="hval">0</span><span class="u">%</span><span class="hl">RH</span></div>'+
         '<div class="foot"><span class="stat"></span> · <span class="ago"></span></div>';
+    }
+
+    function fmtProjection(proj){
+      // Returns {text, cls, title} for the .projChip
+      if(!proj) return {text:'',cls:'dim',title:''};
+      if(proj.note==='insufficient_data') return {text:'',cls:'dim',title:'Not enough data yet for projection (need 6+ hours)'};
+      if(proj.note==='stable') return {text:'stable',cls:'dim',title:'Battery not draining detectably'};
+      var d=proj.daysLeft, r2=proj.r2||0;
+      var suffix=r2<0.6?'?':'';
+      var text= d>=1 ? '~'+Math.round(d)+'d'+suffix : '~'+Math.round(d*24)+'h'+suffix;
+      var cls = d<=3 ? 'warn' : (r2<0.6 ? 'dim' : '');
+      var title='~'+d+' days remaining · '+proj.drainPctPerDay+'%/day drain'+
+                (proj.spanDays?' · based on '+proj.spanDays+'d of data':'')+
+                (r2?' · R²='+r2:'');
+      return {text:text, cls:cls, title:title};
     }
     function applyCard(el, d, animate){
       el.classList.toggle('sel', state.selected.has(d.device));
@@ -1227,6 +1248,8 @@
       el.querySelector('.bchip').title='Battery '+d.volt.toFixed(2)+' V';
       el.querySelector('.stat').innerHTML=d.online?'<span class="on">online</span>':'<span class="offl">offline</span>';
       el.querySelector('.ago').textContent=ago(d.ageMs);
+      var pChip=el.querySelector('.projChip');
+      if(pChip){ var pf=fmtProjection(d.battProj); pChip.textContent=pf.text; pChip.className='projChip'+(pf.cls?' '+pf.cls:''); pChip.title=pf.title; }
     }
 
     // Hidden devices stored in localStorage
@@ -2780,11 +2803,35 @@
       keys.forEach(function(dev, idx){
         var card=acards[idx]; if(!card) return;
         var pts=series[dev];
-        var bs=stat(pts.map(function(p){return p.pct!=null?{v:p.pct,t:p.t}:null;}));
-        if(!bs) return;
-        var row=document.createElement('div');
-        row.innerHTML=aRow('Battery',bs,'%',0);
-        card.appendChild(row.firstChild);
+
+        // Battery % stats row (low/avg/high over range)
+        var bs=stat(pts.map(function(p){return p.pct!=null&&!isNaN(p.pct)?{v:p.pct,t:p.t}:null;}));
+        if(bs){
+          var row=document.createElement('div');
+          row.innerHTML=aRow('Battery',bs,'%',0);
+          card.appendChild(row.firstChild);
+        }
+
+        // Battery projection row (from live device data)
+        var devObj=state.devices.filter(function(d){return d.device===dev;})[0];
+        var proj=devObj&&devObj.battProj;
+        var projRow=document.createElement('div');
+        projRow.className='arow';
+        var projHTML='<span class="alabel">Projection</span>';
+        if(!proj||proj.note==='insufficient_data'){
+          projHTML+='<span class="astat"><b>—</b><i>need 6+ h data</i></span>';
+        } else if(proj.note==='stable'){
+          projHTML+='<span class="astat"><b>stable</b><i>no measurable drain</i></span>';
+        } else {
+          var conf=proj.r2>=0.85?'high':proj.r2>=0.6?'medium':'low';
+          var dText=proj.daysLeft>=1?'~'+Math.round(proj.daysLeft)+'d':'~'+Math.round(proj.daysLeft*24)+'h';
+          projHTML+=
+            '<span class="astat"><b>'+dText+'</b><i>remaining</i></span>'+
+            '<span class="astat"><b>'+proj.drainPctPerDay+'%</b><i>per day</i></span>'+
+            '<span class="astat"><b>'+conf+'</b><i>confidence</i></span>';
+        }
+        projRow.innerHTML=projHTML;
+        card.appendChild(projRow);
       });
     };
 
