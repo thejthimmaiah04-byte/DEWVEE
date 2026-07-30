@@ -174,6 +174,18 @@ function parseRangeMs_(range) {
   return ms[range] || 86400e3;
 }
 
+// Battery voltage constants (LiPo)
+var BATT_CUTOFF_V = 3.20;  // pod shuts off below this (matches firmware BATT_DEAD_V)
+var BATT_FULL_V   = 4.20;  // nominal full-charge voltage
+
+// Derive battery % from voltage with 0.1% precision (3-decimal voltage → fine-grained %)
+function voltToPct_(volt) {
+  if (!volt || volt <= 0) return null;
+  return Math.round(Math.max(0, Math.min(100,
+    (volt - BATT_CUTOFF_V) / (BATT_FULL_V - BATT_CUTOFF_V) * 100
+  )) * 10) / 10;
+}
+
 // Scans ALL sheets (skipping the Devices metadata sheet) and returns merged
 // voltage map, battery readings history, and latest-reading snapshot per device.
 // Handles both the old per-device sheet format ("DEWVEE:01" etc. with multi-line
@@ -236,17 +248,20 @@ function scanAllSheets_(opts) {
       var pct  = colPct  !== -1 ? parseInt(row[colPct])         : 0;
       var volt = colVolt !== -1 ? parseFloat(row[colVolt]) || 0 : 0;
 
-      // Always track voltage and readings for battery projection
+      // Track readings for battery projection — include voltage for high-precision regression
       voltMap[dev] = volt;
 
       if (!isNaN(pct) && pct >= 0 && pct <= 100) {
         if (!readingsMap[dev]) readingsMap[dev] = [];
-        readingsMap[dev].push({ ts: ts, pct: pct });
+        readingsMap[dev].push({ ts: ts, pct: pct, volt: volt });
       }
 
+      // Derive pct from voltage (0.1% precision) rather than the ESP32's integer pct
+      var derivedPct = voltToPct_(volt);
+      if (derivedPct === null) derivedPct = isNaN(pct) ? 0 : pct;
       if (!dataSnap[dev] || ts > dataSnap[dev].lastTs) {
         dataSnap[dev] = { lastTs: ts, lastTemp: temp, lastHum: hum,
-                          lastPct: isNaN(pct) ? 0 : pct, lastVolt: volt };
+                          lastPct: derivedPct, lastVolt: volt };
       }
 
       // Series data (for charts)
@@ -267,13 +282,17 @@ function scanAllSheets_(opts) {
 }
 
 function computeBatteryProjection_(readings) {
-  // readings: [{ts:ms, pct:number}] sorted ascending — all readings for this device
+  // readings: [{ts:ms, pct:number, volt:number}] sorted ascending
   if (!readings || readings.length < 4) return null;
 
-  // Walk backward to find last recharge event (pct rise > 5 pp)
+  // Find last recharge: voltage rose > 0.05V (or pct rose > 5pp if no voltage)
   var startIdx = 0;
   for (var i = readings.length - 1; i > 0; i--) {
-    if (readings[i].pct - readings[i - 1].pct > 5) { startIdx = i; break; }
+    var prev = readings[i - 1], cur = readings[i];
+    var rose = (cur.volt > 0 && prev.volt > 0)
+      ? (cur.volt - prev.volt) > 0.05
+      : (cur.pct  - prev.pct)  > 5;
+    if (rose) { startIdx = i; break; }
   }
   var pts = readings.slice(startIdx);
   if (pts.length < 4) return null;
@@ -281,44 +300,64 @@ function computeBatteryProjection_(readings) {
   var spanMs = pts[pts.length - 1].ts - pts[0].ts;
   if (spanMs < 6 * 3600000) return { note: 'insufficient_data' };
 
-  // Linear regression: x = hours elapsed, y = pct
+  // Prefer voltage regression (3-decimal precision) over integer pct
+  var hasVolt = pts.filter(function(p) { return p.volt > 0; }).length > pts.length / 2;
+
+  // Linear regression: x = days elapsed, y = voltage (or pct)
   var t0 = pts[0].ts;
   var n = pts.length, sx=0, sy=0, sxy=0, sxx=0;
   for (var j = 0; j < n; j++) {
-    var x = (pts[j].ts - t0) / 3600000;
-    var y = pts[j].pct;
+    var x = (pts[j].ts - t0) / 86400000;  // days
+    var y = hasVolt ? pts[j].volt : pts[j].pct;
     sx += x; sy += y; sxy += x*y; sxx += x*x;
   }
   var mx = sx/n, my = sy/n;
   var ssxy = sxy - n*mx*my, ssxx = sxx - n*mx*mx;
-  if (ssxx < 0.001 || ssxy >= 0) return { note: 'stable' }; // not draining
+  if (ssxx < 1e-9) return { note: 'insufficient_data' };
 
-  var slope = ssxy / ssxx; // pct/hour (negative)
+  var slope = ssxy / ssxx;    // V/day or %/day — negative = draining
+  if (slope >= 0) return { note: 'insufficient_data' };
+
+  var drainPerDay = -slope;   // positive value
+
+  var lastPt      = pts[pts.length - 1];
+  var currentVolt = lastPt.volt;
+  var currentPct  = hasVolt ? voltToPct_(currentVolt) : lastPt.pct;
+
+  // Days = usable energy remaining / daily drain
+  var daysLeft;
+  if (hasVolt && currentVolt > 0) {
+    // Voltage-based: how many days until voltage hits cutoff
+    daysLeft = (currentVolt - BATT_CUTOFF_V) / drainPerDay;
+  } else {
+    daysLeft = currentPct / drainPerDay;
+  }
+
+  if (daysLeft <= 0) return { note: 'insufficient_data' };
+
+  // R²
   var intercept = my - slope * mx;
-
-  // R² — how clean the discharge trend is
   var ssRes = 0, ssTot = 0;
   for (var k = 0; k < n; k++) {
-    var pred = slope * ((pts[k].ts - t0) / 3600000) + intercept;
-    ssRes += Math.pow(pts[k].pct - pred, 2);
-    ssTot += Math.pow(pts[k].pct - my,   2);
+    var xk = (pts[k].ts - t0) / 86400000;
+    var yk = hasVolt ? pts[k].volt : pts[k].pct;
+    var pred = slope * xk + intercept;
+    ssRes += Math.pow(yk - pred, 2);
+    ssTot += Math.pow(yk - my,   2);
   }
-  var r2 = ssTot > 0.001 ? 1 - ssRes / ssTot : 0;
+  var r2 = ssTot > 1e-9 ? 1 - ssRes / ssTot : 0;
 
-  var drainPerHour = -slope;              // positive %/h
-  if (drainPerHour < 0.001) return { note: 'stable' };
-
-  var currentPct  = pts[pts.length - 1].pct;
-  var hoursLeft   = currentPct / drainPerHour;
-  var daysLeft    = hoursLeft / 24;
-  var drainPerDay = drainPerHour * 24;
+  // Convert drain to %/day for display regardless of which unit was used
+  var drainPctPerDay = hasVolt
+    ? drainPerDay / (BATT_FULL_V - BATT_CUTOFF_V) * 100
+    : drainPerDay;
 
   return {
-    daysLeft:      Math.round(daysLeft    * 10) / 10,
-    drainPctPerDay:Math.round(drainPerDay * 10) / 10,
-    r2:            Math.round(r2          * 100) / 100,
-    dataPoints:    n,
-    spanDays:      Math.round(spanMs / 86400000 * 10) / 10
+    daysLeft:       Math.round(daysLeft      * 10) / 10,
+    drainPctPerDay: Math.round(drainPctPerDay * 100) / 100,
+    r2:             Math.round(r2             * 100) / 100,
+    dataPoints:     n,
+    spanDays:       Math.round(spanMs / 86400000 * 10) / 10
   };
 }
 
