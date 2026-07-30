@@ -174,6 +174,98 @@ function parseRangeMs_(range) {
   return ms[range] || 86400e3;
 }
 
+// Scans ALL sheets (skipping the Devices metadata sheet) and returns merged
+// voltage map, battery readings history, and latest-reading snapshot per device.
+// Handles both the old per-device sheet format ("DEWVEE:01" etc. with multi-line
+// headers) and the new unified "Data" sheet format.
+function scanAllSheets_(opts) {
+  // opts: { fromMs, toMs, devices }  — optional filter for series mode
+  var ss      = SpreadsheetApp.getActiveSpreadsheet();
+  var sheets  = ss.getSheets();
+  var devSet  = (opts && opts.devices && opts.devices.length) ? opts.devices : null;
+  var fromMs  = (opts && opts.fromMs) || 0;
+  var toMs    = (opts && opts.toMs)   || Infinity;
+  var seriesMode = !!(opts && opts.fromMs);
+
+  var voltMap    = {};
+  var readingsMap = {};
+  var dataSnap   = {};
+  var series     = {};   // used in seriesMode
+
+  sheets.forEach(function(sh) {
+    if (sh.getName() === DEVICES_SHEET) return;
+    var rows = sh.getLastRow();
+    if (rows < 2) return;
+
+    var allD = sh.getDataRange().getValues();
+    // Normalise headers: lower-case, collapse whitespace/newlines
+    var headers = allD[0].map(function(h) {
+      return String(h).toLowerCase().replace(/[\n\r]+/g, ' ').replace(/\s+/g, ' ').trim();
+    });
+
+    // Detect columns by header content (works for old AND new header naming)
+    var colTs = -1, colDev = -1, colTemp = -1, colHum = -1, colPct = -1, colVolt = -1;
+    headers.forEach(function(h, i) {
+      if (colTs   === -1 && (h === 'timestamp' || h.indexOf('time') !== -1)) colTs   = i;
+      if (colDev  === -1 && h.indexOf('device') !== -1) colDev  = i;
+      if (colTemp === -1 && h.indexOf('temp') !== -1)   colTemp = i;
+      if (colHum  === -1 && (h.indexOf('humid') !== -1 || h.indexOf('relative') !== -1)) colHum = i;
+      // Battery % — matches "battery (%)" / "battery%" but NOT "battery voltage"
+      if (colPct  === -1 && h.indexOf('batt') !== -1 && h.indexOf('volt') === -1) colPct  = i;
+      if (colVolt === -1 && h.indexOf('volt') !== -1) colVolt = i;
+    });
+
+    if (colTs === -1 || colTemp === -1) return; // not a sensor data sheet
+
+    var sheetName = sh.getName();
+
+    for (var ri = 1; ri < allD.length; ri++) {
+      var row  = allD[ri];
+      var rawTs = row[colTs];
+      var ts   = rawTs instanceof Date ? rawTs.getTime() : new Date(rawTs).getTime();
+      if (!ts || isNaN(ts) || ts <= 0) continue;
+
+      var dev = colDev !== -1 ? String(row[colDev]).trim() : sheetName;
+      if (!dev || dev === 'undefined' || dev === '') dev = sheetName;
+
+      // Apply device filter when set
+      if (devSet && devSet.indexOf(dev) === -1) continue;
+
+      var temp = parseFloat(row[colTemp]) || 0;
+      var hum  = colHum  !== -1 ? parseFloat(row[colHum])  || 0 : 0;
+      var pct  = colPct  !== -1 ? parseInt(row[colPct])         : 0;
+      var volt = colVolt !== -1 ? parseFloat(row[colVolt]) || 0 : 0;
+
+      // Always track voltage and readings for battery projection
+      voltMap[dev] = volt;
+
+      if (!isNaN(pct) && pct >= 0 && pct <= 100) {
+        if (!readingsMap[dev]) readingsMap[dev] = [];
+        readingsMap[dev].push({ ts: ts, pct: pct });
+      }
+
+      if (!dataSnap[dev] || ts > dataSnap[dev].lastTs) {
+        dataSnap[dev] = { lastTs: ts, lastTemp: temp, lastHum: hum,
+                          lastPct: isNaN(pct) ? 0 : pct, lastVolt: volt };
+      }
+
+      // Series data (for charts)
+      if (seriesMode && ts >= fromMs && ts <= toMs) {
+        if (!series[dev]) series[dev] = [];
+        series[dev].push({ t: Math.round(ts - fromMs), temp: temp, hum: hum,
+                           pct: isNaN(pct) ? 0 : pct, v: volt });
+      }
+    }
+  });
+
+  // Sort battery readings ascending
+  for (var d in readingsMap) {
+    readingsMap[d].sort(function(a, b) { return a.ts - b.ts; });
+  }
+
+  return { voltMap: voltMap, readingsMap: readingsMap, dataSnap: dataSnap, series: series };
+}
+
 function computeBatteryProjection_(readings) {
   // readings: [{ts:ms, pct:number}] sorted ascending — all readings for this device
   if (!readings || readings.length < 4) return null;
@@ -231,51 +323,18 @@ function computeBatteryProjection_(readings) {
 }
 
 function getDevicesData_() {
-  var devSheet  = getOrCreateSheet_(DEVICES_SHEET);
-  var dataSheet = getOrCreateSheet_(DATA_SHEET);
-  var devData   = devSheet.getDataRange().getValues();
-  var now       = Date.now();
-  var result    = [];
-  // Single pass over Data sheet: voltMap, pct history for projection,
-  // AND last-reading snapshot for each device (fallback when Devices sheet is empty)
-  var voltMap      = {};
-  var readingsMap  = {};
-  var dataSnap     = {};  // device → {lastTs, lastTemp, lastHum, lastPct, lastVolt}
-  try {
-    var allD = dataSheet.getDataRange().getValues();
-    for (var ri = 1; ri < allD.length; ri++) {
-      var row = allD[ri];
-      var dev = String(row[DC.DEVICE - 1]);
-      if (!dev || dev === 'undefined') continue;
+  var devSheet = getOrCreateSheet_(DEVICES_SHEET);
+  var devData  = devSheet.getDataRange().getValues();
+  var now      = Date.now();
+  var result   = [];
 
-      var ts   = new Date(row[DC.TS   - 1]).getTime();
-      var pct  = parseInt(row[DC.PCT  - 1]);
-      var volt = parseFloat(row[DC.VOLT - 1]) || 0;
+  // Scan ALL sheets for sensor data (handles old per-device sheets + new "Data" sheet)
+  var scan = scanAllSheets_({});
+  var voltMap    = scan.voltMap;
+  var readingsMap = scan.readingsMap;
+  var dataSnap   = scan.dataSnap;
 
-      voltMap[dev] = volt;   // last row wins — sheet is chronological
-
-      if (!isNaN(pct) && pct >= 0 && pct <= 100 && ts > 0) {
-        if (!readingsMap[dev]) readingsMap[dev] = [];
-        readingsMap[dev].push({ ts: ts, pct: pct });
-      }
-
-      // Keep the most-recent snapshot per device for the fallback path
-      if (!dataSnap[dev] || ts > dataSnap[dev].lastTs) {
-        dataSnap[dev] = {
-          lastTs:   ts,
-          lastTemp: parseFloat(row[DC.TEMP - 1]) || 0,
-          lastHum:  parseFloat(row[DC.HUM  - 1]) || 0,
-          lastPct:  isNaN(pct) ? 0 : pct,
-          lastVolt: volt
-        };
-      }
-    }
-    for (var d in readingsMap) {
-      readingsMap[d].sort(function(a, b) { return a.ts - b.ts; });
-    }
-  } catch(e2) {}
-
-  // Primary path: devices listed in the Devices sheet (populated by doPost)
+  // Primary: Devices metadata sheet (populated by doPost on new uploads)
   var seenDevs = {};
   for (var r = 1; r < devData.length; r++) {
     var row       = devData[r];
@@ -290,7 +349,6 @@ function getDevicesData_() {
 
     seenDevs[device] = true;
     var tsMs = lastSeen ? new Date(lastSeen).getTime() : 0;
-    var volt = voltMap[device] || 0;
     result.push({
       device:    device,
       location:  location || '',
@@ -298,7 +356,7 @@ function getDevicesData_() {
       temp:      parseFloat(lastTemp)  || 0,
       hum:       parseFloat(lastHum)   || 0,
       pct:       parseInt(lastPct)     || 0,
-      volt:      volt,
+      volt:      voltMap[device]       || 0,
       ts:        Math.floor(tsMs / 1000),
       lowBatt:   parseInt(lastPct) <= 20,
       ageMs:     tsMs > 0 ? now - tsMs : Infinity,
@@ -307,13 +365,13 @@ function getDevicesData_() {
     });
   }
 
-  // Fallback path: devices found only in the Data sheet (Devices sheet not yet populated,
-  // e.g. right after a fresh deployment with existing historical data)
+  // Fallback: any device found in sensor sheets but not yet in Devices sheet
+  // (covers old per-device sheets and fresh deployments)
   for (var dev in dataSnap) {
-    if (seenDevs[dev]) continue;   // already covered above
+    if (seenDevs[dev]) continue;
     var snap      = dataSnap[dev];
     var tsMs      = snap.lastTs || 0;
-    var sampleMin = 10;  // assume new default; overwritten next upload
+    var sampleMin = 10;
     result.push({
       device:    dev,
       location:  '',
@@ -330,7 +388,6 @@ function getDevicesData_() {
     });
   }
 
-  // Sort: online first, then alphabetical
   result.sort(function(a, b) {
     if (a.online !== b.online) return a.online ? -1 : 1;
     return String(a.device).localeCompare(String(b.device));
@@ -356,23 +413,15 @@ function getReadingsRange_(p) {
   var devices = p.devices ? p.devices.split(',') : [];
   var fromMs  = parseInt(p.from) || (Date.now() - 86400e3);
   var toMs    = parseInt(p.to)   || Date.now();
-  // Return flat rows array so the CSV export on the dashboard works unchanged
-  var sheet  = getOrCreateSheet_(DATA_SHEET);
-  var data   = sheet.getDataRange().getValues();
-  var devSet = new Set(devices);
-  var rows   = [];
-  for (var r = 1; r < data.length; r++) {
-    var row    = data[r];
-    var device = String(row[DC.DEVICE - 1]);
-    if (devSet.size > 0 && !devSet.has(device)) continue;
-    var ts = new Date(row[DC.TS - 1]).getTime();
-    if (ts < fromMs || ts > toMs) continue;
-    rows.push({ t: ts, device: device,
-                temp: parseFloat(row[DC.TEMP - 1]),
-                hum:  parseFloat(row[DC.HUM  - 1]),
-                pct:  parseInt(row[DC.PCT   - 1]),
-                volt: parseFloat(row[DC.VOLT - 1]) });
+  var scan    = scanAllSheets_({ fromMs: fromMs, toMs: toMs, devices: devices.length ? devices : null });
+  var rows    = [];
+  for (var dev in scan.series) {
+    scan.series[dev].forEach(function(pt) {
+      rows.push({ t: fromMs + pt.t, device: dev,
+                  temp: pt.temp, hum: pt.hum, pct: pt.pct, volt: pt.v });
+    });
   }
+  rows.sort(function(a, b) { return a.t - b.t; });
   return { rows: rows };
 }
 
@@ -384,29 +433,8 @@ function getCompareData_(p) {
 }
 
 function buildSeriesFromSheet_(devices, fromMs, toMs, range) {
-  var sheet  = getOrCreateSheet_(DATA_SHEET);
-  var data   = sheet.getDataRange().getValues();
-  var series = {};
-  var devSet = new Set(devices);
-
-  for (var r = 1; r < data.length; r++) {
-    var row    = data[r];
-    var device = String(row[DC.DEVICE - 1]);
-    if (devSet.size > 0 && !devSet.has(device)) continue;
-    var ts = new Date(row[DC.TS - 1]).getTime();
-    if (ts < fromMs || ts > toMs) continue;
-
-    var relMs = ts - fromMs;
-    if (!series[device]) series[device] = [];
-    series[device].push({
-      t:    Math.round(relMs),
-      temp: parseFloat(row[DC.TEMP - 1]),
-      hum:  parseFloat(row[DC.HUM  - 1]),
-      pct:  parseInt(row[DC.PCT   - 1]),
-      v:    parseFloat(row[DC.VOLT - 1])
-    });
-  }
-  return { series: series, from: fromMs, to: toMs, range: range };
+  var scan = scanAllSheets_({ fromMs: fromMs, toMs: toMs, devices: devices.length ? devices : null });
+  return { series: scan.series, from: fromMs, to: toMs, range: range };
 }
 
 // ================================================================
