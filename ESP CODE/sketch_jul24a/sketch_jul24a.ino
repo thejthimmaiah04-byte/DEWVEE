@@ -58,7 +58,7 @@
 #include <BLEUtils.h>
 
 // -------- DEFAULTS (first boot only — configure via BLE) --------
-#define DEFAULT_NAME        "DEWVEE:01"
+#define DEFAULT_NAME        "DEWVEE:03"
 #define DEFAULT_SSID        ""           // set via BLE on first use
 #define DEFAULT_PASS        ""           // set via BLE on first use
 #define DEFAULT_URL         "https://script.google.com/macros/s/AKfycbw88DpkYijK98qTzhlSguLAFxFRQI_H3KXreYcRp2sitSr3XWFPRz9QwR88ocdsRsO7/exec"
@@ -163,8 +163,7 @@ void goToSleep() {
 
 // -------- Sensor --------
 bool readSensor(float &tOut, float &hOut) {
-  delay(50);    // 50 ms settle — SHT45 is ready within 1 ms of power-on; 50 ms covers
-                // any I2C bus glitch without the old 200 ms waste
+  delay(50);
   sensors_event_t humidity, temp;
   float tSum = 0, hSum = 0;
   int   n = 0;
@@ -172,7 +171,7 @@ bool readSensor(float &tOut, float &hOut) {
     sht.getEvent(&humidity, &temp);
     float t = temp.temperature, h = humidity.relative_humidity;
     if (!isnan(t) && !isnan(h)) { tSum += t; hSum += h; n++; }
-    if (i < BURST_SAMPLES - 1) delay(15);  // 15 ms > SHT45 high-precision measurement time
+    if (i < BURST_SAMPLES - 1) delay(15);
   }
   if (n == 0) return false;
   tOut = tSum / n;
@@ -181,16 +180,14 @@ bool readSensor(float &tOut, float &hOut) {
 }
 
 // -------- Battery --------
-// Calibration history:
-//   v3: pre-cal reading = 4.700/1.149 = 4.090V → factor = 4.22/4.090 ≈ 1.032
+// Calibration: pre-cal reading = 4.700/1.149 = 4.090V → factor = 4.22/4.090 ≈ 1.032
 const float VBAT_CALIBRATION = 4.22f / 4.090f;
 
 float readBatteryVolts() {
   analogSetPinAttenuation(VBAT_PIN, ADC_11db);
-  const int N = 16;   // 16 samples (down from 32) — quartile trim still removes outliers
+  const int N = 16;
   uint32_t samples[N];
   for (int i = 0; i < N; i++) { samples[i] = analogReadMilliVolts(VBAT_PIN); delay(2); }
-  // insertion sort then trim quartiles
   for (int i = 1; i < N; i++) {
     uint32_t key = samples[i]; int j = i - 1;
     while (j >= 0 && samples[j] > key) { samples[j + 1] = samples[j]; j--; }
@@ -230,11 +227,10 @@ void pushReading(uint32_t epoch, float t, float h, float v, uint8_t pct) {
 
 // -------- WiFi / NTP --------
 bool connectWiFi(uint32_t timeoutMs) {
-  setCpuFrequencyMhz(80);   // WiFi requires ≥ 80 MHz
+  setCpuFrequencyMhz(80);
   WiFi.mode(WIFI_STA);
-  WiFi.setSleep(false);     // disable modem sleep during connect burst (speeds up DHCP)
+  WiFi.setSleep(false);
   if (bssidCached) {
-    // Fast path: supply cached BSSID + channel to skip the AP scan entirely
     WiFi.begin(cfg.ssid.c_str(), cfg.pass.c_str(), cachedChannel, cachedBssid);
   } else {
     WiFi.begin(cfg.ssid.c_str(), cfg.pass.c_str());
@@ -243,12 +239,10 @@ bool connectWiFi(uint32_t timeoutMs) {
   while (WiFi.status() != WL_CONNECTED && millis() - start < timeoutMs) delay(100);
   bool ok = (WiFi.status() == WL_CONNECTED);
   if (ok) {
-    // Cache BSSID + channel for the next wake — persists through deep sleep in RTC RAM
     memcpy(cachedBssid, WiFi.BSSID(), 6);
     cachedChannel = (uint8_t)WiFi.channel();
     bssidCached   = true;
   } else if (bssidCached) {
-    // Cached info may be stale (AP rebooted, roamed); clear it so next attempt does a scan
     bssidCached = false;
     memset(cachedBssid, 0, 6);
     cachedChannel = 0;
@@ -275,7 +269,6 @@ uint32_t currentEpoch() {
 }
 
 // -------- Upload --------
-// Escapes a C++ String for embedding in a JSON string literal.
 static String jsonStr(const String& s) {
   String out; out.reserve(s.length() + 2);
   out = "\"";
@@ -313,7 +306,7 @@ bool uploadBatch() {
   body += "]}";
 
   WiFiClientSecure client;
-  client.setInsecure();   // TODO: pin ISRG Root X1 when flash permits
+  client.setInsecure();
   HTTPClient https;
   https.setConnectTimeout(15000);
   https.setTimeout(15000);
@@ -397,7 +390,7 @@ void applyConfigJson(const String& json) {
 
   if (cfg.ssid != oldSsid || cfg.pass != oldPass) {
     wifiCredChanged = true;
-    bssidCached = false;   // force fresh AP scan on new credentials
+    bssidCached = false;
     memset(cachedBssid, 0, 6);
     cachedChannel = 0;
   }
@@ -460,7 +453,6 @@ void runConfigMode() {
   while (millis() - start < window) {
     delay(100);
 
-    // Broadcast remaining seconds every 10 s so the app can show a countdown
     if (millis() - lastStatus >= 10000) {
       lastStatus = millis();
       uint32_t elapsed = millis() - start;
@@ -472,8 +464,10 @@ void runConfigMode() {
 
     if (configSaved) {
       configSaved = false;
+      // If WiFi creds changed we must restart to switch radio — short linger only.
+      // Otherwise linger 30 s so the user can make follow-up edits.
+      window  = wifiCredChanged ? 5000 : 30000;
       start   = millis();
-      window  = 30000;   // linger 30 s after save for follow-up edits
       lastStatus = 0;
 #ifdef RGB_BUILTIN
       rgbLedWrite(RGB_BUILTIN, 0, 40, 0);   // solid green = saved
@@ -489,7 +483,24 @@ void runConfigMode() {
   ledOff();
   Serial.println("Config mode ended.");
 
-  // WiFi cred changed: restart cleanly so the radio can switch modes
+  // If WiFi creds did NOT change but WiFi is configured, flush buffer now.
+  // (When creds DID change we restart below, which handles the upload on next boot.)
+  if (!wifiCredChanged && cfg.uploadsEnabled && cfg.ssid.length() > 0 && bufCount > 0) {
+    Serial.println("Post-config upload attempt...");
+    if (connectWiFi(15000)) {
+      if (syncNTP(10000)) { timeSynced = true; lastSyncEpoch = currentEpoch(); }
+      if (uploadBatch()) {
+        bufCount = 0; registered = true;
+        Serial.println("Post-config upload OK.");
+      } else {
+        Serial.println("Post-config upload failed - buffer kept.");
+      }
+      WiFi.mode(WIFI_OFF);
+    } else {
+      Serial.println("Post-config upload: WiFi unavailable, buffer kept.");
+    }
+  }
+
   if (wifiCredChanged) {
     wifiCredChanged = false;
     pendingWifiTest = true;
@@ -510,16 +521,38 @@ void setup() {
   loadConfig();
 
   // ---- Post-BLE WiFi credential test ----
-  // Runs on the restart that follows a credential change in config mode.
+  // Always take a fresh reading here so the sheet receives at least one data point
+  // the moment new WiFi credentials are confirmed — this is the user's only signal
+  // that the pod is online and the config was successful.
   if (pendingWifiTest) {
     pendingWifiTest = false;
     Serial.println("Post-BLE WiFi test starting...");
+
+    Wire.begin(SDA_PIN, SCL_PIN);
+    float temp = NAN, hum = NAN;
+    if (sht.begin(&Wire)) {
+      sht.setPrecision(SHT4X_HIGH_PRECISION);
+      sht.setHeater(SHT4X_NO_HEATER);
+      readSensor(temp, hum);
+    }
+    float   vbat = readBatteryVolts();
+    uint8_t pct  = batteryPercent(vbat);
+    lastVbat = vbat; lastPct = pct;
+
     if (connectWiFi(20000)) {
       Serial.println("New WiFi OK.");
-      if (syncNTP(10000)) { timeSynced = true; lastSyncEpoch = currentEpoch(); }
+      if (syncNTP(15000)) { timeSynced = true; lastSyncEpoch = currentEpoch(); }
+      uint32_t epoch = currentEpoch();
+      if (!isnan(temp) && !isnan(hum) && epoch != 0)
+        pushReading(epoch, temp, hum, vbat, pct);
       if (bufCount > 0) {
-        if (uploadBatch()) { bufCount = 0; Serial.println("Buffer flushed."); }
-        else               { Serial.println("Upload failed - buffer kept."); }
+        if (uploadBatch()) {
+          bufCount = 0; registered = true;
+          ledBlink(0, 50, 0, 2, 400, 200);   // 2× green = WiFi + upload confirmed
+          Serial.println("Post-BLE upload OK - pod confirmed online.");
+        } else {
+          Serial.println("Upload failed - buffer kept.");
+        }
       }
       WiFi.mode(WIFI_OFF);
     } else {
@@ -534,8 +567,7 @@ void setup() {
   // ---- Reed switch wake → BLE config mode ----
 #if ENABLE_REED_WAKE
   pinMode(REED_PIN, INPUT_PULLUP);
-  delay(50);   // allow pull-up to stabilise
-  // Confirm with 3 reads spaced 20 ms apart to debounce mechanical contacts
+  delay(50);
   bool reedActive = false;
   if (digitalRead(REED_PIN) == LOW) {
     delay(20); if (digitalRead(REED_PIN) == LOW) {
@@ -543,7 +575,6 @@ void setup() {
     }
   }
   if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_GPIO || reedActive) {
-    // Flush buffered data before config to prevent loss if device is re-flashed
     if (registered && cfg.uploadsEnabled) {
       Wire.begin(SDA_PIN, SCL_PIN);
       float temp = NAN, hum = NAN;
@@ -574,7 +605,6 @@ void setup() {
       }
     }
     runConfigMode();
-    // Wait for magnet removal so we don't instantly re-wake
     uint32_t t0 = millis();
     while (digitalRead(REED_PIN) == LOW && millis() - t0 < 10000) delay(100);
     goToSleep();
@@ -583,7 +613,6 @@ void setup() {
 #endif
 
   // ---- Battery protection (all normal / timer wakes) ----
-  // Read battery once here; the value is reused for the reading that follows.
   float   vbat = readBatteryVolts();
   uint8_t pct  = batteryPercent(vbat);
   lastVbat = vbat; lastPct = pct;
@@ -616,7 +645,6 @@ void setup() {
         sht.setHeater(SHT4X_NO_HEATER);
         readSensor(temp, hum);
       } else { Serial.println("SHT45 not found - check wiring."); }
-      // vbat/pct already read in battery protection block above
 
       if (connectWiFi(20000)) {
         delay(300);
@@ -647,7 +675,6 @@ void setup() {
   bootCount++;
 
   // ---- Normal wake: sample → buffer → upload if due ----
-  // Ceiling division so the interval is never shorter than cfg.uploadHrs
   uint16_t uploadEntries = (uint16_t)(
     ((uint32_t)cfg.uploadHrs * 60UL + cfg.sampleMin - 1) / cfg.sampleMin);
   if (uploadEntries < 1) uploadEntries = 1;
@@ -660,7 +687,6 @@ void setup() {
     sht.setHeater(SHT4X_NO_HEATER);
     readSensor(temp, hum);
   } else { Serial.println("SHT45 not found - check wiring."); }
-  // vbat/pct already read in battery protection block; reuse them
 
   bool wifiUp = false;
   if (uploadDue) {
@@ -671,7 +697,6 @@ void setup() {
       if (syncNTP(20000)) {
         timeSynced = true;
         uint32_t trueNow = currentEpoch();
-        // Retroactively correct timestamps of buffered readings for RTC drift
         if (lastSyncEpoch != 0 && rtcNow > lastSyncEpoch && trueNow > lastSyncEpoch) {
           double scale = (double)(trueNow - lastSyncEpoch) /
                          (double)(rtcNow  - lastSyncEpoch);
