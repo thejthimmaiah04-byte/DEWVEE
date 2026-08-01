@@ -191,7 +191,7 @@ function parseRangeMs_(range) {
 
 // Battery voltage constants (LiPo)
 var BATT_CUTOFF_V = 3.20;  // pod shuts off below this (matches firmware BATT_DEAD_V)
-var BATT_FULL_V   = 4.20;  // nominal full-charge voltage
+var BATT_FULL_V   = 4.32;  // resting full-charge voltage for this battery
 
 // Derive battery % from voltage with 0.1% precision (3-decimal voltage → fine-grained %)
 function voltToPct_(volt) {
@@ -422,6 +422,8 @@ function getDevicesData_() {
 
     seenDevs[device] = true;
     var tsMs = lastSeen ? new Date(lastSeen).getTime() : 0;
+    var snap  = dataSnap[device];
+    var derivedPct = (snap && snap.lastPct !== null) ? snap.lastPct : (parseInt(lastPct) || 0);
     result.push({
       device:    device,
       location:  location || '',
@@ -430,10 +432,10 @@ function getDevicesData_() {
       uploadSec: uploadSec,
       temp:      parseFloat(lastTemp)  || 0,
       hum:       parseFloat(lastHum)   || 0,
-      pct:       parseInt(lastPct)     || 0,
+      pct:       derivedPct,
       volt:      voltMap[device]       || 0,
       ts:        Math.floor(tsMs / 1000),
-      lowBatt:   parseInt(lastPct) <= 20,
+      lowBatt:   derivedPct <= 20,
       ageMs:     tsMs > 0 ? now - tsMs : Infinity,
       online:    tsMs > 0 && (now - tsMs) < 86400000,
       battProj:  computeBatteryProjection_(readingsMap[device] || null)

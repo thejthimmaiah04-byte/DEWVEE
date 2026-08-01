@@ -1441,7 +1441,7 @@
       if(tEl)    tEl.textContent   =dev.temp.toFixed(1);
       if(hEl)    hEl.textContent   =dev.hum.toFixed(0);
       if(fillEl) fillEl.style.width=Math.max(4,Math.min(100,dev.pct))+'%';
-      if(pctEl)  pctEl.textContent =dev.pct+'% battery · '+dev.volt.toFixed(2)+'V';
+      if(pctEl)  pctEl.textContent =(typeof dev.pct==='number'?dev.pct.toFixed(1):dev.pct)+'% battery · '+dev.volt.toFixed(2)+'V';
       if(updEl&&dev.ts){
         var d=new Date(dev.ts*1000);
         var ts=d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
@@ -1455,11 +1455,11 @@
       el.classList.toggle('dim', !state.selected.has(d.device));
       var locEl=el.querySelector('.cardLoc'); if(locEl) locEl.textContent=d.location||'';
       var tval=el.querySelector('.tval'), hval=el.querySelector('.hval'), bval=el.querySelector('.bval');
-      if(animate){ animateValue(tval,d.temp,1); animateValue(hval,d.hum,0); animateValue(bval,d.pct,0); }
+      if(animate){ animateValue(tval,d.temp,1); animateValue(hval,d.hum,0); animateValue(bval,d.pct,1); }
       else {
         tval.textContent=d.temp.toFixed(1); tval.setAttribute('data-val',d.temp);
         hval.textContent=d.hum.toFixed(0);  hval.setAttribute('data-val',d.hum);
-        bval.textContent=d.pct;             bval.setAttribute('data-val',d.pct);
+        bval.textContent=d.pct.toFixed(1);   bval.setAttribute('data-val',d.pct);
       }
       el.querySelector('.bfill').style.cssText='width:'+Math.max(8,d.pct)+'%;background:'+battColor(d.pct);
       el.querySelector('.bwrap').style.color=battColor(d.pct);
@@ -1493,7 +1493,7 @@
       var low=devList.filter(function(d){return d.lowBatt;});
       var off=devList.filter(function(d){return !d.online;});
       var msgs=[];
-      if(low.length) msgs.push(dot('var(--warn)')+'Low battery: '+low.map(function(d){return esc(d.device)+' ('+d.pct+'%)';}).join(', '));
+      if(low.length) msgs.push(dot('var(--warn)')+'Low battery: '+low.map(function(d){return esc(d.device)+' ('+(typeof d.pct==='number'?d.pct.toFixed(1):d.pct)+'%)';}).join(', '));
       if(off.length) msgs.push(dot('var(--bad)')+'Offline: '+off.map(function(d){return esc(d.device);}).join(', '));
       setBanner(msgs.length?msgs.join('<span style="opacity:.4;margin:0 10px">·</span>'):null);
 
