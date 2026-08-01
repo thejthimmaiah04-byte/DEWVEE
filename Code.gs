@@ -184,7 +184,7 @@ function doGet(e) {
 //  Data query helpers
 // ================================================================
 function parseRangeMs_(range) {
-  var ms = { '6h':6*3600e3, '12h':12*3600e3, 'day':86400e3,
+  var ms = { '1h':3600e3, '6h':6*3600e3, '12h':12*3600e3, 'day':86400e3,
              'week':7*86400e3, 'month':30*86400e3, 'year':365*86400e3 };
   return ms[range] || 86400e3;
 }

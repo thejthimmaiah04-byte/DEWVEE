@@ -267,6 +267,30 @@
     .updated{ color:var(--muted); font-size:11px; }
     .updatedRow{ text-align:right; padding:3px 0 6px; min-height:18px; }
 
+    /* hero stats panel — shown when exactly one device is selected */
+    .heroStats{ margin:0 0 16px; border-radius:20px; padding:20px 22px 18px;
+                background:linear-gradient(135deg,#1752b0 0%,#0b98d4 100%);
+                color:#fff; box-shadow:0 8px 28px rgba(15,80,180,.38); }
+    .heroStats.hide{ display:none; }
+    .hDevName{ font-size:12px; font-weight:700; text-transform:uppercase;
+               letter-spacing:.10em; opacity:.8; }
+    .hDevLoc{ font-size:11px; opacity:.5; margin-top:2px; min-height:14px; }
+    .heroVals{ display:flex; align-items:flex-end; justify-content:space-around;
+               margin:18px 0 0; gap:10px; }
+    .heroVal{ flex:1; text-align:center; }
+    .heroNum{ font-size:54px; font-weight:800; line-height:1; letter-spacing:-.03em; }
+    .heroUnit{ font-size:19px; font-weight:400; opacity:.75; vertical-align:super; }
+    .heroLabel{ font-size:11px; opacity:.6; text-transform:uppercase;
+                letter-spacing:.06em; margin-top:6px; }
+    .heroDivider{ width:1px; background:rgba(255,255,255,.2); min-height:56px;
+                  align-self:center; flex:none; }
+    .heroBattRow{ display:flex; align-items:center; gap:10px; margin-top:16px; opacity:.7; }
+    .heroBattBar{ flex:1; height:4px; background:rgba(255,255,255,.25);
+                  border-radius:2px; overflow:hidden; }
+    .heroBattFill{ height:100%; background:#fff; border-radius:2px; transition:width .4s; }
+    .heroBattPct{ font-size:11px; font-weight:600; white-space:nowrap; }
+    .heroUpdated{ font-size:11px; opacity:.45; text-align:center; margin-top:11px; }
+
     /* analytics */
     .asection{ margin-top:22px; }
     .atitle{ font-size:15px; font-weight:700; margin:0 2px 12px; }
@@ -654,6 +678,7 @@
     </div>
     <div class="row">
       <div class="seg" id="ranges">
+        <button data-r="1h">Hour</button>
         <button data-r="day">Day</button>
         <button data-r="week">Week</button>
         <button data-r="month">Month</button>
@@ -673,6 +698,27 @@
   <main>
     <div class="banner" id="banner"></div>
     <div id="ptr">↓ release to refresh</div>
+    <div id="heroStats" class="heroStats hide">
+      <div class="hDevName" id="hDevName"></div>
+      <div class="hDevLoc"  id="hDevLoc"></div>
+      <div class="heroVals">
+        <div class="heroVal">
+          <div class="heroNum"><span id="hTemp">--</span><span class="heroUnit">°C</span></div>
+          <div class="heroLabel">Temperature</div>
+        </div>
+        <div class="heroDivider"></div>
+        <div class="heroVal">
+          <div class="heroNum"><span id="hHum">--</span><span class="heroUnit">%</span></div>
+          <div class="heroLabel">Relative Humidity</div>
+        </div>
+      </div>
+      <div class="heroBattRow">
+        <div class="heroBattBar"><div id="hBattFill" class="heroBattFill"></div></div>
+        <span id="hBattPct" class="heroBattPct"></span>
+      </div>
+      <div class="heroUpdated" id="hUpdated"></div>
+    </div>
+
     <div class="cardsWrap">
       <button class="cardNav left hide" id="cardsPrev" aria-label="Previous Dewvees">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
@@ -1065,7 +1111,7 @@
     var chart, chartSplitTemp, chartSplitHum;
 
     // ---- compare helpers ----
-    var PERIOD_MS = { '6h':6*3600e3, '12h':12*3600e3, day:86400e3, week:7*86400e3, month:30*86400e3, year:365*86400e3 };
+    var PERIOD_MS = { '1h':3600e3, '6h':6*3600e3, '12h':12*3600e3, day:86400e3, week:7*86400e3, month:30*86400e3, year:365*86400e3 };
     function periodMs(r){ return PERIOD_MS[r] || 86400e3; }
     function fmtRel(offsetMs, range){
       var h=Math.floor(offsetMs/3600e3), m=Math.floor((offsetMs%3600e3)/60e3), d=Math.floor(offsetMs/86400e3);
@@ -1376,6 +1422,34 @@
                ' + WiFi '+th.wifiMah+' + self-disch '+SELF_DISCHARGE_MAH+')'
       };
     }
+    function updateHero(){
+      var hero=document.getElementById('heroStats'); if(!hero) return;
+      var sel=Array.from(state.selected);
+      if(sel.length!==1){ hero.classList.add('hide'); return; }
+      var dev=state.devices.find(function(d){ return d.device===sel[0]; });
+      if(!dev){ hero.classList.add('hide'); return; }
+      hero.classList.remove('hide');
+      var nameEl=document.getElementById('hDevName');
+      var locEl =document.getElementById('hDevLoc');
+      var tEl   =document.getElementById('hTemp');
+      var hEl   =document.getElementById('hHum');
+      var fillEl=document.getElementById('hBattFill');
+      var pctEl =document.getElementById('hBattPct');
+      var updEl =document.getElementById('hUpdated');
+      if(nameEl) nameEl.textContent=dev.device;
+      if(locEl)  locEl.textContent =dev.location||'';
+      if(tEl)    tEl.textContent   =dev.temp.toFixed(1);
+      if(hEl)    hEl.textContent   =dev.hum.toFixed(0);
+      if(fillEl) fillEl.style.width=Math.max(4,Math.min(100,dev.pct))+'%';
+      if(pctEl)  pctEl.textContent =dev.pct+'% battery · '+dev.volt.toFixed(2)+'V';
+      if(updEl&&dev.ts){
+        var d=new Date(dev.ts*1000);
+        var ts=d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+        var ds=d.toLocaleDateString([],{month:'short',day:'numeric'});
+        updEl.textContent='Updated at '+ts+', '+ds;
+      }
+    }
+
     function applyCard(el, d, animate){
       el.classList.toggle('sel', state.selected.has(d.device));
       el.classList.toggle('dim', !state.selected.has(d.device));
@@ -1487,6 +1561,7 @@
             else state.selected.add(d.device);
             el.classList.toggle('sel', state.selected.has(d.device));
             el.classList.toggle('dim', !state.selected.has(d.device));
+            updateHero();
             loadData();
           };
           cardEls[d.device]=el;
@@ -1503,6 +1578,7 @@
         if(!seen[dev]){ cardEls[dev].remove(); delete cardEls[dev]; }
       });
       requestAnimationFrame(buildCardsNav);   // wait a frame so layout/scrollWidth is settled
+      updateHero();
     }
 
     // ---- Dewvee carousel: overlay arrows + position dots, no raw scrollbar ----
@@ -1844,7 +1920,7 @@
     }
 
     // ---- analytics: low / avg / high over the current range & selection ----
-    var RANGE_LABEL={day:'last 24 hours',week:'last 7 days',month:'last 30 days',year:'last year',all:'all time'};
+    var RANGE_LABEL={'1h':'last hour',day:'last 24 hours',week:'last 7 days',month:'last 30 days',year:'last year',all:'all time'};
     function fmtAnalyticsTime(ms){
       var d=new Date(ms), r=state.range;
       if(r==='day')   return d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
