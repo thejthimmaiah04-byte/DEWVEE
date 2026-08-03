@@ -1234,7 +1234,7 @@
       return Math.round(h/24)+'d ago';
     }
     function fmtTime(ms){
-      var d=new Date(ms), r=state.range;
+      var d=new Date((state.chartFromMs||0)+ms), r=state.range;
       var opt = (r==='day')  ? {hour:'2-digit',minute:'2-digit'} :
                 (r==='week') ? {weekday:'short',hour:'2-digit'} :
                 (r==='month')? {month:'short',day:'numeric'} :
@@ -1986,6 +1986,7 @@
       var rparams={range:state.range,devices:devs.join(',')};
       if(state.dayOffset>0) rparams.dayOffset=state.dayOffset;
       var res=devs.length ? await gcall('getReadings',rparams) : {series:{}};
+      state.chartFromMs = res.from || 0;
       var multi=Object.keys(res.series).length>1;
       if(multi){
         loadSplitCharts(res.series);
