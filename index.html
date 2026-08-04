@@ -1795,11 +1795,14 @@
       splitWrap.classList.remove('hide');
       if(tempPanel) tempPanel.style.display=state.metrics.temp?'':'none';
       if(humPanel)  humPanel.style.display=state.metrics.hum?'':'none';
+      var xMax=periodMs(state.range);
       if(state.metrics.temp){
         if(!chartSplitTemp){
           chartSplitTemp=new Chart(document.getElementById('chartSplitTemp').getContext('2d'),
             {type:'line',data:{datasets:[]},options:splitPanelOptions('temp'),plugins:[dewveeCrosshairPlugin]});
         }
+        chartSplitTemp.options.scales.x.min=0;
+        chartSplitTemp.options.scales.x.max=xMax;
         chartSplitTemp.data.datasets=buildSplitDatasets(series,'temp');
         chartSplitTemp.update();
       }
@@ -1808,6 +1811,8 @@
           chartSplitHum=new Chart(document.getElementById('chartSplitHum').getContext('2d'),
             {type:'line',data:{datasets:[]},options:splitPanelOptions('hum'),plugins:[dewveeCrosshairPlugin]});
         }
+        chartSplitHum.options.scales.x.min=0;
+        chartSplitHum.options.scales.x.max=xMax;
         chartSplitHum.data.datasets=buildSplitDatasets(series,'hum');
         chartSplitHum.update();
       }
@@ -1922,7 +1927,7 @@
     // ---- analytics: low / avg / high over the current range & selection ----
     var RANGE_LABEL={'1h':'last hour',day:'last 24 hours',week:'last 7 days',month:'last 30 days',year:'last year',all:'all time'};
     function fmtAnalyticsTime(ms){
-      var d=new Date(ms), r=state.range;
+      var d=new Date((state.chartFromMs||0)+ms), r=state.range;
       if(r==='day')   return d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
       if(r==='week')  return d.toLocaleDateString([],{weekday:'short'})+' '+d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
       if(r==='month') return d.toLocaleDateString([],{month:'short',day:'numeric'});
@@ -2001,8 +2006,8 @@
         }
         chart.options.scales.yTemp.display=state.metrics.temp;
         chart.options.scales.yHum.display=state.metrics.hum;
-        delete chart.options.scales.x.min;
-        delete chart.options.scales.x.max;
+        chart.options.scales.x.min=0;
+        chart.options.scales.x.max=periodMs(state.range);
         chart.data.datasets=buildDatasets(res.series, null, 0, null, null);
         chart.update();
         renderDevLegend(chart.data.datasets, 'devLegend');
