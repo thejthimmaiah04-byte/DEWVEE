@@ -218,6 +218,7 @@ function scanAllSheets_(opts) {
   var readingsMap = {};
   var dataSnap   = {};
   var series     = {};   // used in seriesMode
+  var seriesSeen = {};   // dedup: {dev: {tsKey: true}}
 
   sheets.forEach(function(sh) {
     if (sh.getName() === DEVICES_SHEET) return;
@@ -280,19 +281,22 @@ function scanAllSheets_(opts) {
                           lastPct: derivedPct, lastVolt: volt };
       }
 
-      // Series data (for charts)
+      // Series data (for charts) — deduplicate by exact timestamp
       if (seriesMode && ts >= fromMs && ts <= toMs) {
-        if (!series[dev]) series[dev] = [];
-        series[dev].push({ t: Math.round(ts - fromMs), temp: temp, hum: hum,
-                           pct: isNaN(pct) ? 0 : pct, v: volt });
+        if (!series[dev]) { series[dev] = []; seriesSeen[dev] = {}; }
+        var tsKey = String(ts);
+        if (!seriesSeen[dev][tsKey]) {
+          seriesSeen[dev][tsKey] = true;
+          series[dev].push({ t: Math.round(ts - fromMs), temp: temp, hum: hum,
+                             pct: isNaN(pct) ? 0 : pct, v: volt });
+        }
       }
     }
   });
 
-  // Sort battery readings ascending
-  for (var d in readingsMap) {
-    readingsMap[d].sort(function(a, b) { return a.ts - b.ts; });
-  }
+  // Sort series and battery readings ascending (Chart.js normalized:true requires sorted data)
+  for (var d in series)      series[d].sort(function(a, b) { return a.t - b.t; });
+  for (var d in readingsMap) readingsMap[d].sort(function(a, b) { return a.ts - b.ts; });
 
   return { voltMap: voltMap, readingsMap: readingsMap, dataSnap: dataSnap, series: series };
 }
