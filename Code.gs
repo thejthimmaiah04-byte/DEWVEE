@@ -214,11 +214,12 @@ function scanAllSheets_(opts) {
   var toMs    = (opts && opts.toMs)   || Infinity;
   var seriesMode = !!(opts && opts.fromMs);
 
-  var voltMap    = {};
-  var readingsMap = {};
-  var dataSnap   = {};
-  var series     = {};   // used in seriesMode
-  var seriesSeen = {};   // dedup: {dev: {tsKey: true}}
+  var voltMap      = {};
+  var readingsMap  = {};
+  var readingsSeen = {};  // dedup: {dev: {tsKey: true}}
+  var dataSnap     = {};
+  var series       = {};  // used in seriesMode
+  var seriesSeen   = {};  // dedup: {dev: {tsKey: true}}
 
   sheets.forEach(function(sh) {
     if (sh.getName() === DEVICES_SHEET) return;
@@ -269,8 +270,12 @@ function scanAllSheets_(opts) {
 
       // Track any row with a valid voltage — voltage regression doesn't need valid pct
       if (volt > 0) {
-        if (!readingsMap[dev]) readingsMap[dev] = [];
-        readingsMap[dev].push({ ts: ts, pct: (!isNaN(pct) && pct >= 0 && pct <= 100) ? pct : 0, volt: volt });
+        if (!readingsMap[dev]) { readingsMap[dev] = []; readingsSeen[dev] = {}; }
+        var rKey = String(ts);
+        if (!readingsSeen[dev][rKey]) {
+          readingsSeen[dev][rKey] = true;
+          readingsMap[dev].push({ ts: ts, pct: (!isNaN(pct) && pct >= 0 && pct <= 100) ? pct : 0, volt: volt });
+        }
       }
 
       // Derive pct from voltage (0.1% precision) rather than the ESP32's integer pct
@@ -693,6 +698,39 @@ function checkAlerts() {
 }
 
 // ================================================================
+//  Data retention — removes rows older than RETAIN_DAYS from all
+//  per-device sheets. Run weekly via setupAllTriggers or manually.
+// ================================================================
+var RETAIN_DAYS = 90;
+
+function pruneOldData_() {
+  var ss      = SpreadsheetApp.getActiveSpreadsheet();
+  var cutoff  = Date.now() - RETAIN_DAYS * 86400000;
+  var pruned  = 0;
+  ss.getSheets().forEach(function(sh) {
+    if (sh.getName() === DEVICES_SHEET) return;
+    var lastRow = sh.getLastRow();
+    if (lastRow < 2) return;
+    var all = sh.getDataRange().getValues();
+    var kept = [all[0]];          // always keep the header row
+    for (var i = 1; i < all.length; i++) {
+      var raw = all[i][0];
+      var ts  = raw instanceof Date ? raw.getTime() : new Date(raw).getTime();
+      if (!ts || isNaN(ts) || ts >= cutoff) {
+        kept.push(all[i]);
+      } else {
+        pruned++;
+      }
+    }
+    if (kept.length < all.length) {
+      sh.clearContents();
+      sh.getRange(1, 1, kept.length, kept[0].length).setValues(kept);
+    }
+  });
+  Logger.log('pruneOldData_: removed ' + pruned + ' rows older than ' + RETAIN_DAYS + ' days.');
+}
+
+// ================================================================
 //  Weekly backup — copies the Data sheet to a timestamped file
 //  in the same Google Drive folder as this spreadsheet.
 // ================================================================
@@ -723,5 +761,7 @@ function setupAllTriggers() {
   ScriptApp.newTrigger('checkAlerts').timeBased().atHour(hour).everyDays(1).create();
   // Weekly backup every Sunday at 02:00 UTC
   ScriptApp.newTrigger('weeklyBackup').timeBased().onWeekDay(ScriptApp.WeekDay.SUNDAY).atHour(2).create();
+  // Weekly data prune every Sunday at 03:00 UTC (removes rows > 90 days old)
+  ScriptApp.newTrigger('pruneOldData_').timeBased().onWeekDay(ScriptApp.WeekDay.SUNDAY).atHour(3).create();
   Logger.log('All triggers created.');
 }
