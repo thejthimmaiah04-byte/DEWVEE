@@ -1571,9 +1571,9 @@
       el.querySelector('.bfill').style.cssText='width:'+Math.max(8,d.pct)+'%;background:'+battColor(d.pct);
       el.querySelector('.bwrap').style.color=battColor(d.pct);
       el.querySelector('.bchip').title='Battery '+d.volt.toFixed(2)+' V';
-      // Client-side online threshold: offline if last report > 2.5× sample interval
-      var sampleMs=(d.sampleSec||d.sampleMin*60||600)*1000;
-      var trulyOnline=d.online && d.ageMs < sampleMs*2.5;
+      // Offline if last report > uploadInterval + 2h grace period
+      var uploadMs=(d.uploadSec||d.uploadHrs*3600||43200)*1000;
+      var trulyOnline=d.online && d.ageMs < uploadMs + 7200000;
       el.querySelector('.stat').innerHTML=trulyOnline?'<span class="on">online</span>':'<span class="offl">offline</span>';
       el.querySelector('.ago').textContent=ago(d.ageMs);
       // Projection chip (now in footer)
