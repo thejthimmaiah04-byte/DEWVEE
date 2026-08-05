@@ -573,6 +573,25 @@
     .heroDerivedLabel{ font-size:9.5px; text-transform:uppercase; letter-spacing:.07em; opacity:.65; }
     .heroDerivedVal{ font-size:15px; font-weight:700; }
 
+    /* ── comfort score badge on cards ── */
+    .comfortRow{ display:flex; align-items:center; gap:6px; margin:5px 0 4px; }
+    .comfortBadge{ font-size:11px; font-weight:700; padding:2px 8px; border-radius:20px;
+                   letter-spacing:.01em; white-space:nowrap; }
+    .comfortDesc{ font-size:10.5px; color:var(--muted); }
+
+    /* ── insight panel (between cards and chart) ── */
+    .insightPanel{ display:flex; flex-direction:column; gap:8px; margin:14px 0 18px; }
+    .insightPanel:empty{ margin:0; }
+    .insight{ display:flex; align-items:flex-start; gap:10px; padding:10px 14px;
+              background:var(--card); border:1px solid var(--line); border-radius:12px;
+              border-left-width:3px; font-size:13px; line-height:1.5; box-shadow:var(--sh-1);
+              animation:riseIn .35s cubic-bezier(.2,.8,.2,1) both; }
+    .insightIcon{ font-size:16px; flex:none; margin-top:1px; }
+    .insightText{ color:var(--ink); }
+    .insightText b{ color:var(--ink); font-weight:700; }
+    .insightLabel{ font-size:10px; font-weight:700; text-transform:uppercase;
+                   letter-spacing:.07em; opacity:.55; display:block; margin-bottom:2px; }
+
     /* ── trend arrow on device cards ── */
     .card .trendRow{ display:flex; align-items:center; gap:5px; margin-top:3px; min-height:16px; }
     .trendArrow{ font-size:12px; font-weight:800; }
@@ -789,6 +808,7 @@
       </button>
     </div>
     <div class="cardDots hide" id="cardDots"></div>
+    <div class="insightPanel" id="insightPanel"></div>
 
     <div class="chartbox">
       <div class="chead">
@@ -1366,6 +1386,7 @@
         '</div>'+
         '<div class="cardLoc"></div>'+
         '<div class="temp"><span class="tval">0</span><span class="u">°</span></div>'+
+        '<div class="comfortRow"><span class="comfortBadge">—</span><span class="comfortDesc"></span></div>'+
         '<div class="hum"><span class="hval">0</span><span class="u">%</span><span class="hl">RH</span><span class="humDot" title="Humidity comfort"></span><span class="dewInline">Dew <span class="dewVal">—</span>°C</span></div>'+
         '<div class="trendRow"><span class="trendArrow flat">→</span><span class="trendVal"></span></div>'+
         '<div class="sparkWrap"><canvas class="sparkCanvas"></canvas></div>'+
@@ -1520,6 +1541,157 @@
       return g[range] || 10800000;
     }
 
+    // ════════════════════════════════════════════════════
+    //  FEATURE 1 — Comfort Score Engine
+    // ════════════════════════════════════════════════════
+    function comfortScore(T, RH) {
+      var tScore = Math.max(0, 100 - Math.abs(T - 21) * 5);
+      var hOver  = Math.max(0, RH - 60) * 2.5;
+      var hUnder = Math.max(0, 40 - RH) * 3.0;
+      var hScore = Math.max(0, 100 - hOver - hUnder);
+      return Math.round(0.55 * tScore + 0.45 * hScore);
+    }
+    function comfortMeta(score) {
+      if (score >= 80) return { label:'Excellent', col:'var(--good)' };
+      if (score >= 65) return { label:'Good',      col:'#4caf7a' };
+      if (score >= 45) return { label:'Fair',      col:'var(--warn)' };
+      return              { label:'Poor',      col:'var(--bad)' };
+    }
+
+    // ════════════════════════════════════════════════════
+    //  FEATURE 2 — Daily Pattern Classifier
+    // ════════════════════════════════════════════════════
+    function hourlyStats(pts) {
+      var byHour = {};
+      pts.forEach(function(p) {
+        if (p.temp == null) return;
+        var h = new Date(p.t).getHours();
+        if (!byHour[h]) byHour[h] = [];
+        byHour[h].push(p.temp);
+      });
+      var stats = {};
+      Object.keys(byHour).forEach(function(h) {
+        var vals = byHour[h];
+        if (vals.length < 2) return;
+        var mean = vals.reduce(function(a,b){return a+b;},0) / vals.length;
+        var variance = vals.reduce(function(a,b){return a+(b-mean)*(b-mean);},0) / vals.length;
+        stats[+h] = { mean: mean, std: Math.sqrt(variance), n: vals.length };
+      });
+      return stats;
+    }
+
+    // ════════════════════════════════════════════════════
+    //  FEATURE 4 — Dew-point slope for weather prediction
+    // ════════════════════════════════════════════════════
+    function dewTrend(pts, windowMs) {
+      if (!pts || pts.length < 3) return null;
+      var now = pts[pts.length-1].t;
+      var win = pts.filter(function(p){return p.t >= now-windowMs && p.temp!=null && p.hum!=null;});
+      if (win.length < 3) return null;
+      var dps = win.map(function(p){return {t:p.t, dp:dewPoint(p.temp,p.hum)};});
+      var deltaHrs = (dps[dps.length-1].t - dps[0].t) / 3600000;
+      if (deltaHrs < 0.5) return null;
+      return (dps[dps.length-1].dp - dps[0].dp) / deltaHrs; // °C per hour
+    }
+
+    // ════════════════════════════════════════════════════
+    //  FEATURES 2, 3, 4 — Render insight panel
+    // ════════════════════════════════════════════════════
+    function renderInsights(devices, series) {
+      var panel = document.getElementById('insightPanel');
+      if (!panel) return;
+      var insights = [];
+      var valid = (devices||[]).filter(function(d){ return d.temp!=null && d.hum!=null; });
+      if (!valid.length) { panel.innerHTML=''; return; }
+
+      // ── Feature 3: Room comparison ──────────────────
+      if (valid.length > 1) {
+        var hottest = valid.reduce(function(a,b){return a.temp>b.temp?a:b;});
+        var coolest = valid.reduce(function(a,b){return a.temp<b.temp?a:b;});
+        var spread = hottest.temp - coolest.temp;
+        if (spread >= 0.5) {
+          insights.push({
+            cat:'Rooms', icon:'🌡',
+            text:'<b>'+esc(hottest.device)+'</b> is '+spread.toFixed(1)+'° warmer than <b>'+esc(coolest.device)+'</b> right now ('+hottest.temp.toFixed(1)+'° vs '+coolest.temp.toFixed(1)+'°)',
+            accent:'var(--temp)'
+          });
+        }
+        var scores = valid.map(function(d){return {dev:d.device,score:comfortScore(d.temp,d.hum)};});
+        scores.sort(function(a,b){return b.score-a.score;});
+        var best=scores[0], worst=scores[scores.length-1];
+        if (best.score - worst.score >= 8) {
+          var cm = comfortMeta(best.score);
+          insights.push({
+            cat:'Comfort', icon:'✦',
+            text:'<b>'+esc(best.dev)+'</b> is the most comfortable room right now — score <b>'+best.score+'/100</b> ('+cm.label+')',
+            accent: cm.col
+          });
+        }
+        var mostHumid = valid.reduce(function(a,b){return a.hum>b.hum?a:b;});
+        if (mostHumid.hum > 75) {
+          insights.push({
+            cat:'Humidity', icon:'💧',
+            text:'<b>'+esc(mostHumid.device)+'</b> has the highest humidity at <b>'+mostHumid.hum.toFixed(0)+'%</b>'+(mostHumid.hum>80?' — above comfortable range, consider ventilation':''),
+            accent:'var(--hum)'
+          });
+        }
+      }
+
+      // ── Feature 2: Daily pattern anomaly ────────────
+      if (series) {
+        valid.forEach(function(d) {
+          var pts = series[d.device];
+          if (!pts || pts.length < 12) return;
+          var span = pts[pts.length-1].t - pts[0].t;
+          if (span < 30*3600000) return; // need multiple days
+          var stats = hourlyStats(pts);
+          var curH = new Date().getHours();
+          var s = stats[curH];
+          if (!s || s.n < 2) return;
+          var diff = d.temp - s.mean;
+          var threshold = Math.max(1.0, s.std * 1.5);
+          if (Math.abs(diff) < threshold) return;
+          insights.push({
+            cat:'Pattern', icon:'📊',
+            text:'<b>'+esc(d.device)+'</b> is '+Math.abs(diff).toFixed(1)+'° '+(diff>0?'warmer':'cooler')+' than usual for '+(curH<12?'this morning':'this time of day')+' (typical: '+s.mean.toFixed(1)+'° · based on '+s.n+' readings)',
+            accent:'var(--warn)'
+          });
+        });
+      }
+
+      // ── Feature 4: Weather / dew-point trend ────────
+      if (series) {
+        var slopes = valid.map(function(d){return dewTrend(series[d.device],7200000);})
+                         .filter(function(s){return s!==null;});
+        if (slopes.length >= Math.max(1, Math.floor(valid.length*0.6))) {
+          var avg = slopes.reduce(function(a,b){return a+b;},0)/slopes.length;
+          var allRising  = slopes.every(function(s){return s> 0.12;});
+          var allFalling = slopes.every(function(s){return s<-0.12;});
+          if (allRising && avg > 0.15) {
+            insights.push({
+              cat:'Weather', icon:'🌧',
+              text:'Dew point rising across all rooms (+'+avg.toFixed(1)+'°C/h over last 2h) — ambient moisture increasing, possible weather change or rain approaching',
+              accent:'#5b8cff'
+            });
+          } else if (allFalling && avg < -0.15) {
+            insights.push({
+              cat:'Weather', icon:'☀',
+              text:'Dew point falling across all rooms ('+avg.toFixed(1)+'°C/h over last 2h) — air drying out, conditions improving',
+              accent:'var(--good)'
+            });
+          }
+        }
+      }
+
+      if (!insights.length) { panel.innerHTML=''; return; }
+      panel.innerHTML = insights.map(function(ins,i){
+        return '<div class="insight" style="border-left-color:'+ins.accent+';animation-delay:'+(i*60)+'ms">'+
+          '<span class="insightIcon">'+ins.icon+'</span>'+
+          '<span class="insightText"><span class="insightLabel">'+ins.cat+'</span>'+ins.text+'</span>'+
+        '</div>';
+      }).join('');
+    }
+
     function updateHero(){
       var hero=document.getElementById('heroStats'); if(!hero) return;
       var sel=Array.from(state.selected);
@@ -1585,6 +1757,11 @@
       // Dew point (inline with RH)
       var dewEl=el.querySelector('.dewVal');
       if(dewEl) dewEl.textContent=dewPoint(d.temp,d.hum);
+      // Comfort score badge
+      var cs=comfortScore(d.temp,d.hum), cm=comfortMeta(cs);
+      var badge=el.querySelector('.comfortBadge'), desc=el.querySelector('.comfortDesc');
+      if(badge){ badge.textContent=cs+' · '+cm.label; badge.style.background=cm.col+'22'; badge.style.color=cm.col; }
+      if(desc){ desc.textContent='Comfort index'; }
       // Humidity comfort dot: green 40–65%, amber 65–80%, red >80% or <40%
       var humDotEl=el.querySelector('.humDot');
       if(humDotEl){
@@ -2223,6 +2400,7 @@
       state.series = res.series;
       renderAnalytics(res.series);
       drawSparklines(res.series);
+      renderInsights(state.devices, res.series);
       setRefreshing(false);
     }
 
