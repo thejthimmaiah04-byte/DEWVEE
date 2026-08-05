@@ -20,35 +20,35 @@
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root{
-      --bg:#0b0c0e; --card:#141518; --ink:#f2f4f7; --muted:#868d98;
-      --line:rgba(255,255,255,.08); --grid:rgba(255,255,255,.06);
+      --bg:#0b0c0e; --card:#1c1e23; --ink:#f2f4f7; --muted:#868d98;
+      --line:rgba(255,255,255,.14); --grid:rgba(255,255,255,.07);
       --temp:#f0a54e; --hum:#5b8cff; --good:#3ecf8e; --warn:#e0a13a; --bad:#e5484d;
-      --sh-1: inset 0 1px 0 rgba(255,255,255,.04), 0 6px 16px rgba(0,0,0,.28);
-      --sh-2: inset 0 1px 0 rgba(255,255,255,.05), 0 12px 28px rgba(0,0,0,.36);
+      --sh-1: inset 0 1px 0 rgba(255,255,255,.06), 0 6px 16px rgba(0,0,0,.32);
+      --sh-2: inset 0 1px 0 rgba(255,255,255,.07), 0 12px 28px rgba(0,0,0,.40);
     }
     /* auto light (unless the user has explicitly picked a theme) */
     @media (prefers-color-scheme: light){
       :root:not([data-theme]){
         --bg:#eef0f3; --card:#ffffff; --ink:#1b1f24; --muted:#40454c;
-        --line:rgba(0,0,0,.10); --grid:rgba(0,0,0,.07);
+        --line:rgba(0,0,0,.12); --grid:rgba(0,0,0,.07);
         --temp:#d9822b; --hum:#3b6fe0; --good:#12a150; --warn:#b45309; --bad:#dc2626;
-        --sh-1: 0 1px 2px rgba(15,23,42,.05), 0 6px 16px rgba(15,23,42,.06);
-        --sh-2: 0 2px 4px rgba(15,23,42,.05), 0 14px 32px rgba(15,23,42,.09);
+        --sh-1: 0 1px 2px rgba(15,23,42,.05), 0 6px 16px rgba(15,23,42,.08);
+        --sh-2: 0 2px 4px rgba(15,23,42,.05), 0 14px 32px rgba(15,23,42,.11);
       }
     }
     :root[data-theme="light"]{
       --bg:#eef0f3; --card:#ffffff; --ink:#1b1f24; --muted:#40454c;
-      --line:rgba(0,0,0,.10); --grid:rgba(0,0,0,.07);
+      --line:rgba(0,0,0,.12); --grid:rgba(0,0,0,.07);
       --temp:#d9822b; --hum:#3b6fe0; --good:#12a150; --warn:#b45309; --bad:#dc2626;
-      --sh-1: 0 1px 2px rgba(15,23,42,.05), 0 6px 16px rgba(15,23,42,.06);
-      --sh-2: 0 2px 4px rgba(15,23,42,.05), 0 14px 32px rgba(15,23,42,.09);
+      --sh-1: 0 1px 2px rgba(15,23,42,.05), 0 6px 16px rgba(15,23,42,.08);
+      --sh-2: 0 2px 4px rgba(15,23,42,.05), 0 14px 32px rgba(15,23,42,.11);
     }
     :root[data-theme="dark"]{
-      --bg:#0b0c0e; --card:#141518; --ink:#f2f4f7; --muted:#868d98;
-      --line:rgba(255,255,255,.08); --grid:rgba(255,255,255,.06);
+      --bg:#0b0c0e; --card:#1c1e23; --ink:#f2f4f7; --muted:#868d98;
+      --line:rgba(255,255,255,.14); --grid:rgba(255,255,255,.07);
       --temp:#f0a54e; --hum:#5b8cff; --good:#3ecf8e; --warn:#e0a13a; --bad:#e5484d;
-      --sh-1: inset 0 1px 0 rgba(255,255,255,.04), 0 6px 16px rgba(0,0,0,.28);
-      --sh-2: inset 0 1px 0 rgba(255,255,255,.05), 0 12px 28px rgba(0,0,0,.36);
+      --sh-1: inset 0 1px 0 rgba(255,255,255,.06), 0 6px 16px rgba(0,0,0,.32);
+      --sh-2: inset 0 1px 0 rgba(255,255,255,.07), 0 12px 28px rgba(0,0,0,.40);
     }
     *{ box-sizing:border-box; }
     body{ margin:0; background:var(--bg); color:var(--ink);
@@ -69,7 +69,11 @@
     .seg button{ border-radius:0; border-right:none; color:var(--muted); }
     .seg button:first-child{ border-radius:9px 0 0 9px; }
     .seg button:last-child{ border-radius:0 9px 9px 0; border-right:1px solid var(--line); }
-    .seg button.on{ color:var(--ink); background:rgba(255,255,255,.06); font-weight:700; }
+    .seg button.on{ color:var(--ink); background:rgba(255,255,255,.11); font-weight:700;
+                    box-shadow:inset 0 1px 0 rgba(255,255,255,.08); }
+    :root[data-theme="light"] .seg button.on,
+    @media(prefers-color-scheme:light){ :root:not([data-theme]) .seg button.on{} }
+    :root[data-theme="light"] .seg button.on{ background:rgba(0,0,0,.07); box-shadow:inset 0 1px 0 rgba(0,0,0,.05); }
     main{ padding:0 20px 40px; max-width:1080px; margin:0 auto; }
     .banner{ background:rgba(229,72,77,.12); border:1px solid rgba(229,72,77,.35);
              color:#ff9ea0; padding:10px 14px; border-radius:11px; margin-bottom:18px;
@@ -544,6 +548,36 @@
     .aexEmailAddBtn:active{ opacity:.65; }
     .aexNote code{ font-family:inherit; background:var(--line); border-radius:4px; padding:1px 5px; font-size:10.5px; }
 
+    /* ── derived metrics row (dew point, heat index) on hero panel ── */
+    .heroDerived{ display:flex; gap:18px; justify-content:center; flex-wrap:wrap;
+                  margin-top:12px; padding-top:11px;
+                  border-top:1px solid rgba(255,255,255,.15); font-size:12px; opacity:.82; }
+    .heroDerivedItem{ display:flex; flex-direction:column; align-items:center; gap:1px; }
+    .heroDerivedLabel{ font-size:9.5px; text-transform:uppercase; letter-spacing:.07em; opacity:.65; }
+    .heroDerivedVal{ font-size:15px; font-weight:700; }
+
+    /* ── trend arrow on device cards ── */
+    .card .trendRow{ display:flex; align-items:center; gap:5px; margin-top:3px; min-height:16px; }
+    .trendArrow{ font-size:11px; font-weight:700; }
+    .trendArrow.up{ color:var(--bad); }
+    .trendArrow.dn{ color:var(--hum); }
+    .trendArrow.flat{ color:var(--muted); }
+    .trendVal{ font-size:11px; color:var(--muted); }
+
+    /* ── dew point on cards ── */
+    .card .dewRow{ font-size:11px; color:var(--muted); margin-top:2px; }
+    .card .dewRow .dewVal{ color:var(--ink); font-weight:600; }
+
+    /* ── sparkline canvas on cards ── */
+    .card .sparkWrap{ margin-top:8px; height:28px; position:relative; }
+    .sparkCanvas{ position:absolute; inset:0; width:100% !important; height:100% !important; }
+
+    /* ── analytics: no-data placeholder card ── */
+    .acard .anodata{ color:var(--muted); font-size:12px; padding:4px 0 2px;
+                     font-style:italic; line-height:1.55; }
+    .acard .adewrow{ color:var(--muted); }
+    .acard .adewrow b{ color:var(--ink); }
+
     /* ── compare hover tooltip ── */
     .cmpTooltip{ position:fixed; z-index:30; background:var(--card); border:1px solid var(--line);
                  border-radius:14px; padding:12px 16px; pointer-events:none; box-shadow:var(--sh-2);
@@ -712,6 +746,7 @@
           <div class="heroLabel">Relative Humidity</div>
         </div>
       </div>
+      <div class="heroDerived" id="heroDerived" style="display:none"></div>
       <div class="heroBattRow">
         <div class="heroBattBar"><div id="hBattFill" class="heroBattFill"></div></div>
         <span id="hBattPct" class="heroBattPct"></span>
@@ -1308,6 +1343,9 @@
         '<div class="cardLoc"></div>'+
         '<div class="temp"><span class="tval">0</span><span class="u">°</span></div>'+
         '<div class="hum"><span class="hval">0</span><span class="u">%</span><span class="hl">RH</span></div>'+
+        '<div class="dewRow">Dew <span class="dewVal">—</span>°C</div>'+
+        '<div class="trendRow"><span class="trendArrow flat">—</span><span class="trendVal"></span></div>'+
+        '<div class="sparkWrap"><canvas class="sparkCanvas"></canvas></div>'+
         '<div class="foot"><span class="stat"></span> · <span class="ago"></span></div>';
     }
 
@@ -1422,6 +1460,43 @@
                ' + WiFi '+th.wifiMah+' + self-disch '+SELF_DISCHARGE_MAH+')'
       };
     }
+    function dewPoint(T, RH) {
+      var g = Math.log(Math.max(RH, 0.01) / 100) + 17.67 * T / (243.5 + T);
+      return Math.round(243.5 * g / (17.67 - g) * 10) / 10;
+    }
+    function heatIndex(T, RH) {
+      if (T < 27 || RH < 40) return null;
+      var HI = -8.78469475556 + 1.61139411*T + 2.338549*RH - 0.14611605*T*RH
+               - 0.012308094*T*T - 0.016424828*RH*RH + 0.002211732*T*T*RH
+               + 0.00072546*T*RH*RH - 0.000003582*T*T*RH*RH;
+      return Math.round(HI * 10) / 10;
+    }
+    function computeTrend(pts) {
+      if (!pts || pts.length < 2) return null;
+      var now = pts[pts.length - 1];
+      var target = now.t - 3600000;
+      var ref = pts[0];
+      for (var i = pts.length - 2; i >= 0; i--) {
+        if (pts[i].t <= target) { ref = pts[i]; break; }
+      }
+      return { tempDelta: now.temp - ref.temp, humDelta: now.hum - ref.hum };
+    }
+    function withGapNulls(pts, gapMs) {
+      if (!pts || pts.length < 2) return pts;
+      var out = [pts[0]], thr = gapMs || 5400000;
+      for (var i = 1; i < pts.length; i++) {
+        if (pts[i].t - pts[i-1].t > thr)
+          out.push({ t: (pts[i].t + pts[i-1].t) / 2, temp: null, hum: null, pct: 0, v: 0 });
+        out.push(pts[i]);
+      }
+      return out;
+    }
+    function rangeGapMs(range) {
+      var g = {'1h':1800000,'6h':5400000,'12h':10800000,'day':10800000,
+               'week':129600000,'month':432000000,'year':2592000000};
+      return g[range] || 10800000;
+    }
+
     function updateHero(){
       var hero=document.getElementById('heroStats'); if(!hero) return;
       var sel=Array.from(state.selected);
@@ -1448,6 +1523,15 @@
         var ds=d.toLocaleDateString([],{month:'short',day:'numeric'});
         updEl.textContent='Updated at '+ts+', '+ds;
       }
+      var derivedEl=document.getElementById('heroDerived');
+      if(derivedEl){
+        var dp=dewPoint(dev.temp,dev.hum);
+        var hi=heatIndex(dev.temp,dev.hum);
+        var html='<div class="heroDerivedItem"><span class="heroDerivedLabel">Dew point</span><span class="heroDerivedVal">'+dp+'°C</span></div>';
+        if(hi!==null) html+='<div class="heroDerivedItem"><span class="heroDerivedLabel">Heat index</span><span class="heroDerivedVal">'+hi+'°C</span></div>';
+        derivedEl.innerHTML=html;
+        derivedEl.style.display='flex';
+      }
     }
 
     function applyCard(el, d, animate){
@@ -1468,6 +1552,19 @@
       el.querySelector('.ago').textContent=ago(d.ageMs);
       var pChip=el.querySelector('.projChip');
       if(pChip){ var pf=fmtProjection(d.battProj,(d.sampleSec||d.sampleMin*60||600)/60,(d.uploadSec||43200)/3600); pChip.textContent=pf.text; pChip.className='projChip'+(pf.cls?' '+pf.cls:''); pChip.title=pf.title; }
+      var dewEl=el.querySelector('.dewVal');
+      if(dewEl) dewEl.textContent=dewPoint(d.temp,d.hum);
+      var pts=(state.series&&state.series[d.device])||null;
+      var trend=computeTrend(pts);
+      var arrowEl=el.querySelector('.trendArrow'), trendValEl=el.querySelector('.trendVal');
+      if(arrowEl&&trend){
+        var dt=trend.tempDelta;
+        var dir=dt>0.3?'up':dt<-0.3?'dn':'flat';
+        var sym=dt>0.3?'↑':dt<-0.3?'↓':'→';
+        arrowEl.className='trendArrow '+dir;
+        arrowEl.textContent=sym;
+        if(trendValEl) trendValEl.textContent=(dt>0?'+':'')+dt.toFixed(1)+'°C /h';
+      }
     }
 
     // Hidden devices stored in localStorage
@@ -1517,6 +1614,7 @@
         if(!el){
           el=document.createElement('div');
           el.className='card enter dim';
+          el.setAttribute('data-dev', d.device);
           el.style.animationDelay=(idx*40)+'ms';
           el.innerHTML=cardInnerHTML(d);
           el.style.position='relative';
@@ -1735,13 +1833,14 @@
       var out=[], pbg=themeColors().point, isHum=(metric==='hum');
       Object.keys(series).forEach(function(dev,idx){
         var pts=series[dev], clr=color(dev), dw=devWidth(idx);
+        var gapped=withGapNulls(pts, rangeGapMs(state.range));
         out.push({
           label:dev, yAxisID:'y',
           borderColor:clr, backgroundColor:'transparent', fill:false,
-          borderWidth:isHum?dw*0.78:dw, borderDash:[], tension:.38, spanGaps:true,
+          borderWidth:isHum?dw*0.78:dw, borderDash:[], tension:.38, spanGaps:false,
           pointRadius:0, pointBackgroundColor:pbg,
           pointBorderColor:clr, pointBorderWidth:1.5, pointHoverRadius:4, pointHoverBorderWidth:2,
-          data:pts.map(function(p){return {x:p.t, y:isHum?p.hum:p.temp};}),
+          data:gapped.map(function(p){return {x:p.t, y:isHum?p.hum:p.temp};}),
           _podDev:dev, _isHum:isHum, _devWidth:dw, _devIdentityColor:clr
         });
       });
@@ -1757,7 +1856,7 @@
                         :function(v){return v.toFixed(1)+'°';} },
         grid:{ color:c.grid }, border:{ display:false }
       };
-      if(isHum){ yScale.min=0; yScale.max=100; } else { yScale.grace='8%'; }
+      yScale.grace='8%';
       return {
         responsive:true, maintainAspectRatio:false,
         animation:{ duration:350, easing:'easeOutQuart' },
@@ -1838,7 +1937,7 @@
           yTemp:{ type:'linear', position:'left', display:state.metrics.temp, grace:'8%',
               ticks:{ color:c.tick, font:{size:11}, callback:function(v){return v.toFixed(1)+'°';} },
               grid:{ color:c.grid }, border:{ display:false } },
-          yHum:{ type:'linear', position:'right', display:state.metrics.hum, min:0, max:100,
+          yHum:{ type:'linear', position:'right', display:state.metrics.hum, grace:'8%',
               ticks:{ color:c.tick, font:{size:11}, callback:function(v){return (Math.round(v*10)/10)+'%';} },
               grid:{ drawOnChartArea:false }, border:{ display:false } }
         },
@@ -1891,14 +1990,15 @@
         var bwH=isCmp?dw*0.52:dw*0.78;
         var idClr=color(dev);
 
+        var gapped=withGapNulls(pts, rangeGapMs(state.range));
         if(m.temp){
           out.push({ label:prefix+(suffix?'°C · '+suffix:'Temp'),
             yAxisID:'yTemp', borderColor:cols.tCol, backgroundColor:'transparent',
             fill:isCmp?false:'start',
-            borderWidth:bwT, borderDash:dash, tension:.38, spanGaps:true,
+            borderWidth:bwT, borderDash:dash, tension:.38, spanGaps:false,
             pointRadius:0, pointBackgroundColor:pbg,
             pointBorderColor:cols.tCol, pointBorderWidth:1.5, pointHoverRadius:4, pointHoverBorderWidth:2,
-            data:pts.map(function(p){return {x:normX(p.t),y:p.temp};}),
+            data:gapped.map(function(p){return {x:normX(p.t),y:p.temp};}),
             _podDev:dev, _podColor:podClr, _isHum:false, _isCmp:isCmp,
             _rawColor:podClr||mc.temp, _multi:multi,
             _devWidth:dw, _devIdentityColor:idClr });
@@ -1907,10 +2007,10 @@
           out.push({ label:prefix+(suffix?'% · '+suffix:'RH'),
             yAxisID:'yHum', borderColor:cols.hCol, backgroundColor:'transparent',
             fill:isCmp?false:'start',
-            borderWidth:bwH, borderDash:dash, tension:.38, spanGaps:true,
+            borderWidth:bwH, borderDash:dash, tension:.38, spanGaps:false,
             pointRadius:0, pointBackgroundColor:pbg,
             pointBorderColor:cols.hCol, pointBorderWidth:1.5, pointHoverRadius:4, pointHoverBorderWidth:2,
-            data:pts.map(function(p){return {x:normX(p.t),y:p.hum};}),
+            data:gapped.map(function(p){return {x:normX(p.t),y:p.hum};}),
             _podDev:dev, _podColor:podClr, _isHum:true, _isCmp:isCmp,
             _rawColor:podClr||mc.hum, _multi:multi,
             _devWidth:dw, _devIdentityColor:idClr });
@@ -1964,20 +2064,65 @@
         }
         lbl.textContent=' · '+rangeText;
       }
-      var keys=Object.keys(series);
-      if(!keys.length){ host.innerHTML='<div style="color:var(--muted);font-size:13px;padding:2px">Select a Dewvee to see its analytics.</div>'; return; }
+      var selArr=Array.from(state.selected);
+      if(!selArr.length){ host.innerHTML='<div style="color:var(--muted);font-size:13px;padding:2px">Select a Dewvee to see its analytics.</div>'; return; }
       var html='';
-      keys.forEach(function(dev, idx){
+      selArr.forEach(function(dev, idx){
         var pts=series[dev];
+        if(!pts||!pts.length){
+          html+='<div class="acard enter" style="animation-delay:'+(idx*40)+'ms">'+
+            '<div class="aname"><span class="dot adot" style="background:'+color(dev)+'"></span>'+dev+'</div>'+
+            '<div class="anodata">No data for this range</div>'+
+          '</div>';
+          return;
+        }
         var ts=stat(pts.map(function(p){return {v:p.temp, t:p.t};}));
         var hs=stat(pts.map(function(p){return {v:p.hum,  t:p.t};}));
+        var validPts=pts.filter(function(p){return p.temp!=null&&p.hum!=null;});
+        var dpVals=validPts.map(function(p){return {v:dewPoint(p.temp,p.hum),t:p.t};});
+        var ds=stat(dpVals);
         html+='<div class="acard enter" style="animation-delay:'+(idx*40)+'ms">'+
           '<div class="aname"><span class="dot adot" data-dev="'+dev.replace(/&/g,'&amp;').replace(/"/g,'&quot;')+'" style="background:'+color(dev)+'"></span>'+dev+'</div>'+
           aRow('Temperature',ts,'°',1)+
           aRow('<span class="full">Relative humidity</span><span class="short">Humidity</span>',hs,'%',0)+
+          '<div class="adewrow">'+aRow('Dew point',ds,'°C',1)+'</div>'+
         '</div>';
       });
       host.innerHTML=html;
+    }
+
+    function drawSparklines(series){
+      requestAnimationFrame(function(){ _drawSparklines(series); });
+    }
+    function _drawSparklines(series){
+      document.querySelectorAll('.card').forEach(function(card){
+        var dev=card.getAttribute('data-dev');
+        var cvs=card.querySelector('.sparkCanvas');
+        if(!cvs||!dev||!series||!series[dev]) return;
+        var pts=series[dev].filter(function(p){return p.temp!=null;});
+        if(pts.length<2) return;
+        var W=cvs.offsetWidth||120, H=cvs.offsetHeight||32;
+        cvs.width=W*2; cvs.height=H*2;
+        cvs.style.width=W+'px'; cvs.style.height=H+'px';
+        var ctx2=cvs.getContext('2d'); ctx2.scale(2,2);
+        var temps=pts.map(function(p){return p.temp;});
+        var mn=Math.min.apply(null,temps), mx=Math.max.apply(null,temps);
+        var rng=mx-mn||1;
+        var clr=color(dev);
+        ctx2.clearRect(0,0,W,H);
+        ctx2.beginPath();
+        pts.forEach(function(p,i){
+          var x=(i/(pts.length-1))*W;
+          var y=H-((p.temp-mn)/rng)*(H-4)-2;
+          i===0?ctx2.moveTo(x,y):ctx2.lineTo(x,y);
+        });
+        ctx2.strokeStyle=clr; ctx2.lineWidth=1.5; ctx2.lineJoin='round';
+        ctx2.stroke();
+        var last=pts[pts.length-1];
+        var lx=W, ly=H-((last.temp-mn)/rng)*(H-4)-2;
+        ctx2.beginPath(); ctx2.arc(lx,ly,2.5,0,Math.PI*2);
+        ctx2.fillStyle=clr; ctx2.fill();
+      });
     }
 
     function setRefreshing(on){
@@ -2012,7 +2157,9 @@
         chart.update();
         renderDevLegend(chart.data.datasets, 'devLegend');
       }
+      state.series = res.series;
       renderAnalytics(res.series);
+      drawSparklines(res.series);
       setRefreshing(false);
     }
 
@@ -2228,7 +2375,7 @@
           yTemp:{ type:'linear', position:'left', display:true, grace:'8%',
               ticks:{ color:c.tick, font:{size:11}, callback:function(v){return v.toFixed(1)+'°';} },
               grid:{ color:c.grid }, border:{ display:false } },
-          yHum:{ type:'linear', position:'right', display:true, min:0, max:100,
+          yHum:{ type:'linear', position:'right', display:true, grace:'8%',
               ticks:{ color:c.tick, font:{size:11}, callback:function(v){return (Math.round(v*10)/10)+'%';} },
               grid:{ drawOnChartArea:false }, border:{ display:false } }
         },
@@ -3017,6 +3164,13 @@
       });
       document.getElementById('dayNext').addEventListener('click',function(){
         if(state.dayOffset>0){ state.dayOffset--; updateDayNav(); loadData(); }
+      });
+
+      document.addEventListener('keydown',function(ev){
+        if(ev.target.tagName==='INPUT'||ev.target.tagName==='TEXTAREA') return;
+        if(state.range!=='day') return;
+        if(ev.key==='ArrowLeft'){ state.dayOffset++; updateDayNav(); loadData(); }
+        else if(ev.key==='ArrowRight'&&state.dayOffset>0){ state.dayOffset--; updateDayNav(); loadData(); }
       });
 
       var _origLoadData=loadData;
