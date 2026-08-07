@@ -573,24 +573,52 @@
     .heroDerivedLabel{ font-size:9.5px; text-transform:uppercase; letter-spacing:.07em; opacity:.65; }
     .heroDerivedVal{ font-size:15px; font-weight:700; }
 
-    /* ── comfort score badge on cards ── */
-    .comfortRow{ display:flex; align-items:center; gap:6px; margin:5px 0 4px; }
-    .comfortBadge{ font-size:11px; font-weight:700; padding:2px 8px; border-radius:20px;
-                   letter-spacing:.01em; white-space:nowrap; }
-    .comfortDesc{ font-size:10.5px; color:var(--muted); }
+    /* ── comfort score ring + row ── */
+    .comfortRow{ display:flex; align-items:center; gap:8px; margin:6px 0 5px; }
+    .comfortRing{ position:relative; width:30px; height:30px; border-radius:50%; flex:none;
+                  display:flex; align-items:center; justify-content:center;
+                  background:conic-gradient(var(--cring-col,var(--good)) calc(var(--cring-pct,75)*1%),
+                  rgba(128,128,128,.14) 0); }
+    .comfortRing::after{ content:''; position:absolute; width:22px; height:22px;
+                         border-radius:50%; background:var(--card); }
+    .comfortRingNum{ position:relative; z-index:1; font-size:8.5px; font-weight:800;
+                     color:var(--cring-col,var(--good)); line-height:1; }
+    .comfortLabel{ font-size:11px; font-weight:600; color:var(--cring-col,var(--good)); }
+    .comfortSub{ font-size:10px; color:var(--muted); margin-left:1px; }
+
+    /* ── temperature semantic color ── */
+    .card .temp{ transition:color .3s; }
+
+    /* ── card selected: device-colored glow ── */
+    .card.sel{ border-color:var(--dev-col,rgba(255,255,255,.28)) !important;
+               box-shadow:0 0 0 3px color-mix(in srgb,var(--dev-col,transparent) 18%,transparent),var(--sh-1) !important; }
+
+    /* ── home tile hover accent bar ── */
+    .tile{ overflow:hidden; position:relative; }
+    .tile::before{ content:''; position:absolute; inset:0; background:var(--tile-accent,transparent);
+                   opacity:0; transition:opacity .2s; border-radius:inherit; pointer-events:none; }
+    .tile:hover::before{ opacity:1; }
+    #tilePods{ --tile-accent:linear-gradient(135deg,rgba(240,165,78,.08) 0%,transparent 60%); }
+    #tileCompare{ --tile-accent:linear-gradient(135deg,rgba(91,140,255,.08) 0%,transparent 60%); }
+    #tileConfig{ --tile-accent:linear-gradient(135deg,rgba(62,207,142,.08) 0%,transparent 60%); }
+    #tileAlerts{ --tile-accent:linear-gradient(135deg,rgba(229,72,77,.08) 0%,transparent 60%); }
+    #tileAutoExport{ --tile-accent:linear-gradient(135deg,rgba(62,207,142,.08) 0%,transparent 60%); }
 
     /* ── insight panel (between cards and chart) ── */
     .insightPanel{ display:flex; flex-direction:column; gap:8px; margin:14px 0 18px; }
     .insightPanel:empty{ margin:0; }
-    .insight{ display:flex; align-items:flex-start; gap:10px; padding:10px 14px;
-              background:var(--card); border:1px solid var(--line); border-radius:12px;
+    .insight{ display:flex; align-items:flex-start; gap:12px; padding:11px 16px 11px 14px;
+              background:var(--card); border:1px solid var(--line); border-radius:13px;
               border-left-width:3px; font-size:13px; line-height:1.5; box-shadow:var(--sh-1);
               animation:riseIn .35s cubic-bezier(.2,.8,.2,1) both; }
-    .insightIcon{ font-size:16px; flex:none; margin-top:1px; }
-    .insightText{ color:var(--ink); }
+    .insightIconWrap{ width:34px; height:34px; border-radius:50%; flex:none;
+                      display:flex; align-items:center; justify-content:center;
+                      background:color-mix(in srgb,var(--iaccent,var(--muted)) 14%,transparent);
+                      font-size:16px; margin-top:1px; }
+    .insightText{ color:var(--ink); flex:1; }
     .insightText b{ color:var(--ink); font-weight:700; }
     .insightLabel{ font-size:10px; font-weight:700; text-transform:uppercase;
-                   letter-spacing:.07em; opacity:.55; display:block; margin-bottom:2px; }
+                   letter-spacing:.07em; color:var(--iaccent,var(--muted)); display:block; margin-bottom:2px; }
 
     /* ── trend arrow on device cards ── */
     .card .trendRow{ display:flex; align-items:center; gap:5px; margin-top:3px; min-height:16px; }
@@ -1386,7 +1414,11 @@
         '</div>'+
         '<div class="cardLoc"></div>'+
         '<div class="temp"><span class="tval">0</span><span class="u">°</span></div>'+
-        '<div class="comfortRow"><span class="comfortBadge">—</span><span class="comfortDesc"></span></div>'+
+        '<div class="comfortRow">'+
+          '<div class="comfortRing"><span class="comfortRingNum">—</span></div>'+
+          '<span class="comfortLabel">—</span>'+
+          '<span class="comfortSub">comfort</span>'+
+        '</div>'+
         '<div class="hum"><span class="hval">0</span><span class="u">%</span><span class="hl">RH</span><span class="humDot" title="Humidity comfort"></span><span class="dewInline">Dew <span class="dewVal">—</span>°C</span></div>'+
         '<div class="trendRow"><span class="trendArrow flat">→</span><span class="trendVal"></span></div>'+
         '<div class="sparkWrap"><canvas class="sparkCanvas"></canvas></div>'+
@@ -1557,6 +1589,13 @@
       if (score >= 45) return { label:'Fair',      col:'var(--warn)' };
       return              { label:'Poor',      col:'var(--bad)' };
     }
+    function tempColor(T) {
+      if (T >= 32) return '#e5734d';
+      if (T >= 28) return '#e8914a';
+      if (T < 16)  return '#5b8cff';
+      if (T < 20)  return '#7ab8e0';
+      return null; // comfortable — use default ink
+    }
 
     // ════════════════════════════════════════════════════
     //  FEATURE 2 — Daily Pattern Classifier
@@ -1685,8 +1724,8 @@
 
       if (!insights.length) { panel.innerHTML=''; return; }
       panel.innerHTML = insights.map(function(ins,i){
-        return '<div class="insight" style="border-left-color:'+ins.accent+';animation-delay:'+(i*60)+'ms">'+
-          '<span class="insightIcon">'+ins.icon+'</span>'+
+        return '<div class="insight" style="border-left-color:'+ins.accent+';--iaccent:'+ins.accent+';animation-delay:'+(i*60)+'ms">'+
+          '<div class="insightIconWrap">'+ins.icon+'</div>'+
           '<span class="insightText"><span class="insightLabel">'+ins.cat+'</span>'+ins.text+'</span>'+
         '</div>';
       }).join('');
@@ -1730,8 +1769,12 @@
     }
 
     function applyCard(el, d, animate){
-      el.classList.toggle('sel', state.selected.has(d.device));
-      el.classList.toggle('dim', !state.selected.has(d.device));
+      var isSel = state.selected.has(d.device);
+      el.classList.toggle('sel', isSel);
+      el.classList.toggle('dim', !isSel);
+      // Device-colored glow when selected
+      var devCol = color(d.device);
+      el.style.setProperty('--dev-col', isSel ? devCol : 'transparent');
       var locEl=el.querySelector('.cardLoc'); if(locEl) locEl.textContent=d.location||'';
       var tval=el.querySelector('.tval'), hval=el.querySelector('.hval'), bval=el.querySelector('.bval');
       if(animate){ animateValue(tval,d.temp,1); animateValue(hval,d.hum,0); animateValue(bval,d.pct,1); }
@@ -1757,11 +1800,17 @@
       // Dew point (inline with RH)
       var dewEl=el.querySelector('.dewVal');
       if(dewEl) dewEl.textContent=dewPoint(d.temp,d.hum);
-      // Comfort score badge
+      // Temperature semantic tint
+      var tCol=tempColor(d.temp);
+      var tempEl=el.querySelector('.temp');
+      if(tempEl) tempEl.style.color=tCol||'';
+      // Comfort ring
       var cs=comfortScore(d.temp,d.hum), cm=comfortMeta(cs);
-      var badge=el.querySelector('.comfortBadge'), desc=el.querySelector('.comfortDesc');
-      if(badge){ badge.textContent=cs+' · '+cm.label; badge.style.background=cm.col+'22'; badge.style.color=cm.col; }
-      if(desc){ desc.textContent='Comfort index'; }
+      var ring=el.querySelector('.comfortRing');
+      if(ring){ ring.style.setProperty('--cring-pct',cs); ring.style.setProperty('--cring-col',cm.col); }
+      var rNum=el.querySelector('.comfortRingNum'); if(rNum) rNum.textContent=cs;
+      var cLabel=el.querySelector('.comfortLabel');
+      if(cLabel){ cLabel.textContent=cm.label; cLabel.style.color=cm.col; }
       // Humidity comfort dot: green 40–65%, amber 65–80%, red >80% or <40%
       var humDotEl=el.querySelector('.humDot');
       if(humDotEl){
@@ -2753,8 +2802,9 @@
       if(cmpViewState.devices.length===0){
         try{
           var info=await gcall('getDevices');
-          cmpViewState.devices=info.devices;
-          if(cmpViewState.selected.size===0) info.devices.forEach(function(d){ cmpViewState.selected.add(d.device); });
+          var devArr=Array.isArray(info)?info:(info.devices||[]);
+          cmpViewState.devices=devArr;
+          if(cmpViewState.selected.size===0) devArr.forEach(function(d){ cmpViewState.selected.add(d.device); });
         }catch(e){}
       }
       renderCmpChips();
