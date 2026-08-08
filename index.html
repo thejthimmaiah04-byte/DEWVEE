@@ -1343,10 +1343,22 @@
     }
     function fmtTime(ms){
       var d=new Date((state.chartFromMs||0)+ms), r=state.range;
-      var opt = (r==='day')  ? {hour:'2-digit',minute:'2-digit'} :
-                (r==='week') ? {weekday:'short',hour:'2-digit'} :
-                (r==='month')? {month:'short',day:'numeric'} :
-                               {month:'short',year:'2-digit'};
+      var opt;
+      if(r==='1h'||r==='6h'||r==='12h'||r==='day'){
+        opt={hour:'2-digit',minute:'2-digit'};
+      } else if(r==='week'){
+        opt={weekday:'short',hour:'2-digit'};
+      } else if(r==='month'){
+        opt={month:'short',day:'numeric'};
+      } else {
+        // 'year', 'all', or unknown — adapt format to actual span so ticks
+        // don't all collapse to the same label when data is recent
+        var span=state.chartXMax||0;
+        if(span<3*86400000)        opt={hour:'2-digit',minute:'2-digit'};
+        else if(span<90*86400000)  opt={month:'short',day:'numeric'};
+        else if(span<800*86400000) opt={month:'short',year:'2-digit'};
+        else                       opt={year:'numeric'};
+      }
       return d.toLocaleString([],opt);
     }
 
@@ -2427,6 +2439,7 @@
       var res=devs.length ? await gcall('getReadings',rparams) : {series:{}};
       state.chartFromMs = res.from || 0;
       var xMax=(res.to && res.from!=null) ? (res.to-res.from) : periodMs(state.range);
+      state.chartXMax = xMax;
       var multi=Object.keys(res.series).length>1;
       if(multi){
         loadSplitCharts(res.series, xMax);
