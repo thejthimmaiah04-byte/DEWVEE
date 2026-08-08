@@ -1569,7 +1569,7 @@
     }
     function rangeGapMs(range) {
       var g = {'1h':1800000,'6h':5400000,'12h':10800000,'day':10800000,
-               'week':129600000,'month':432000000,'year':2592000000};
+               'week':129600000,'month':432000000,'year':2592000000,'all':2592000000};
       return g[range] || 10800000;
     }
 
@@ -2161,7 +2161,7 @@
       };
     }
 
-    function loadSplitCharts(series){
+    function loadSplitCharts(series, xMax){
       var singleWrap=document.getElementById('singleChartWrap');
       var splitWrap=document.getElementById('splitChartWrap');
       var tempPanel=document.getElementById('tempSplitPanel');
@@ -2170,7 +2170,7 @@
       splitWrap.classList.remove('hide');
       if(tempPanel) tempPanel.style.display=state.metrics.temp?'':'none';
       if(humPanel)  humPanel.style.display=state.metrics.hum?'':'none';
-      var xMax=periodMs(state.range);
+      if(xMax==null) xMax=periodMs(state.range);
       if(state.metrics.temp){
         if(!chartSplitTemp){
           chartSplitTemp=new Chart(document.getElementById('chartSplitTemp').getContext('2d'),
@@ -2426,9 +2426,10 @@
       if(state.dayOffset>0) rparams.dayOffset=state.dayOffset;
       var res=devs.length ? await gcall('getReadings',rparams) : {series:{}};
       state.chartFromMs = res.from || 0;
+      var xMax=(res.to && res.from!=null) ? (res.to-res.from) : periodMs(state.range);
       var multi=Object.keys(res.series).length>1;
       if(multi){
-        loadSplitCharts(res.series);
+        loadSplitCharts(res.series, xMax);
       } else {
         var singleWrap=document.getElementById('singleChartWrap');
         var splitWrap=document.getElementById('splitChartWrap');
@@ -2441,7 +2442,7 @@
         chart.options.scales.yTemp.display=state.metrics.temp;
         chart.options.scales.yHum.display=state.metrics.hum;
         chart.options.scales.x.min=0;
-        chart.options.scales.x.max=periodMs(state.range);
+        chart.options.scales.x.max=xMax;
         chart.data.datasets=buildDatasets(res.series, null, 0, null, null);
         chart.update();
         renderDevLegend(chart.data.datasets, 'devLegend');

@@ -489,10 +489,9 @@ function getReadingsData_(p) {
   var dayOffset  = parseInt(p.dayOffset) || 0;
   var devices    = p.devices ? p.devices.split(',') : [];
   var nowMs      = Date.now();
-  var rangeMs    = parseRangeMs_(range);
   var shiftMs    = dayOffset * 86400000;
   var toMs       = nowMs - shiftMs;
-  var fromMs     = toMs  - rangeMs;
+  var fromMs     = (range === 'all') ? 0 : toMs - parseRangeMs_(range);
   return buildSeriesFromSheet_(devices, fromMs, toMs, range);
 }
 
