@@ -491,7 +491,7 @@ function getReadingsData_(p) {
   var nowMs      = Date.now();
   var shiftMs    = dayOffset * 86400000;
   var toMs       = nowMs - shiftMs;
-  var fromMs     = (range === 'all') ? 0 : toMs - parseRangeMs_(range);
+  var fromMs     = (range === 'all') ? new Date('2024-01-01').getTime() : toMs - parseRangeMs_(range);
   return buildSeriesFromSheet_(devices, fromMs, toMs, range);
 }
 
