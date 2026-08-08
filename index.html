@@ -2203,7 +2203,20 @@
       };
     }
 
-    function loadSplitCharts(series, xMax){
+    // Return actual {min,max} of .t values across all series, or null if no data.
+    function dataXRange(series){
+      var mn=Infinity, mx=-Infinity;
+      Object.keys(series).forEach(function(dev){
+        var pts=series[dev]; if(!pts) return;
+        for(var i=0;i<pts.length;i++){
+          if(pts[i].t<mn) mn=pts[i].t;
+          if(pts[i].t>mx) mx=pts[i].t;
+        }
+      });
+      return mn===Infinity ? null : {min:mn, max:mx};
+    }
+
+    function loadSplitCharts(series, fitMin, fitMax){
       var singleWrap=document.getElementById('singleChartWrap');
       var splitWrap=document.getElementById('splitChartWrap');
       var tempPanel=document.getElementById('tempSplitPanel');
@@ -2212,14 +2225,15 @@
       splitWrap.classList.remove('hide');
       if(tempPanel) tempPanel.style.display=state.metrics.temp?'':'none';
       if(humPanel)  humPanel.style.display=state.metrics.hum?'':'none';
-      if(xMax==null) xMax=periodMs(state.range);
+      if(fitMax==null) fitMax=periodMs(state.range);
+      if(fitMin==null) fitMin=0;
       if(state.metrics.temp){
         if(!chartSplitTemp){
           chartSplitTemp=new Chart(document.getElementById('chartSplitTemp').getContext('2d'),
             {type:'line',data:{datasets:[]},options:splitPanelOptions('temp'),plugins:[dewveeCrosshairPlugin]});
         }
-        chartSplitTemp.options.scales.x.min=0;
-        chartSplitTemp.options.scales.x.max=xMax;
+        chartSplitTemp.options.scales.x.min=fitMin;
+        chartSplitTemp.options.scales.x.max=fitMax;
         chartSplitTemp.data.datasets=buildSplitDatasets(series,'temp');
         chartSplitTemp.update();
       }
@@ -2228,8 +2242,8 @@
           chartSplitHum=new Chart(document.getElementById('chartSplitHum').getContext('2d'),
             {type:'line',data:{datasets:[]},options:splitPanelOptions('hum'),plugins:[dewveeCrosshairPlugin]});
         }
-        chartSplitHum.options.scales.x.min=0;
-        chartSplitHum.options.scales.x.max=xMax;
+        chartSplitHum.options.scales.x.min=fitMin;
+        chartSplitHum.options.scales.x.max=fitMax;
         chartSplitHum.data.datasets=buildSplitDatasets(series,'hum');
         chartSplitHum.update();
       }
@@ -2486,10 +2500,18 @@
       var res=devs.length ? await gcall('getReadings',rparams) : {series:{}};
       state.chartFromMs = res.from || 0;
       var xMax=(res.to && res.from!=null) ? (res.to-res.from) : periodMs(state.range);
-      state.chartXMax = xMax;
+      // Auto-fit: clamp x-axis to actual data extent so data always fills the chart.
+      var dr=dataXRange(res.series);
+      var fitMin=0, fitMax=xMax;
+      if(dr){
+        var pad=Math.max(2*3600000, (dr.max-dr.min)*0.02);
+        fitMin=Math.max(0, dr.min-pad);
+        fitMax=Math.min(xMax, dr.max+pad);
+      }
+      state.chartXMax = fitMax - fitMin;
       var multi=Object.keys(res.series).length>1;
       if(multi){
-        loadSplitCharts(res.series, xMax);
+        loadSplitCharts(res.series, fitMin, fitMax);
       } else {
         var singleWrap=document.getElementById('singleChartWrap');
         var splitWrap=document.getElementById('splitChartWrap');
@@ -2501,8 +2523,8 @@
         }
         chart.options.scales.yTemp.display=state.metrics.temp;
         chart.options.scales.yHum.display=state.metrics.hum;
-        chart.options.scales.x.min=0;
-        chart.options.scales.x.max=xMax;
+        chart.options.scales.x.min=fitMin;
+        chart.options.scales.x.max=fitMax;
         chart.data.datasets=buildDatasets(res.series, null, 0, null, null);
         chart.update();
         renderDevLegend(chart.data.datasets, 'devLegend');
