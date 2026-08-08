@@ -580,8 +580,7 @@ function setupDailyTrigger() {
 }
 
 function sendDailyExport() {
-  var sp     = PropertiesService.getScriptProperties();
-  var status = '';
+  var sp = PropertiesService.getScriptProperties();
   try {
     var emailProp = sp.getProperty('EXPORT_EMAILS') || '[]';
     var emails;
@@ -591,51 +590,363 @@ function sendDailyExport() {
       if (legacy) emails = [legacy];
     }
     if (!emails.length) { sp.setProperty('EXPORT_STATUS','No recipients configured'); return; }
-
-    // Build CSV for the last 7 days — scan all device sheets
-    var from    = Date.now() - 7 * 86400e3;
-    var scan    = scanAllSheets_({ fromMs: from, toMs: Date.now() });
-    var rows    = [['Timestamp','Device','Location','Temperature(C)','Humidity(%)','Battery(%)','Voltage(V)']];
-
-    // Build device → location map
-    var locMap = {};
-    try {
-      var devData = getOrCreateSheet_(DEVICES_SHEET).getDataRange().getValues();
-      for (var r = 1; r < devData.length; r++)
-        locMap[devData[r][DEV.DEVICE-1]] = devData[r][DEV.LOCATION-1] || '';
-    } catch(e) {}
-
-    for (var dev in scan.series) {
-      scan.series[dev].forEach(function(pt) {
-        var ts = new Date(from + pt.t);
-        rows.push([
-          Utilities.formatDate(ts, 'UTC', 'yyyy-MM-dd HH:mm:ss'),
-          dev,
-          locMap[dev] || '',
-          pt.temp, pt.hum, pt.pct, pt.v
-        ]);
-      });
-    }
-    rows.sort(function(a, b) { return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0; });
-
-    var csv = rows.map(function(r) {
-      return r.map(function(c) { return '"' + String(c).replace(/"/g,'""') + '"'; }).join(',');
-    }).join('\n');
-
-    var subject = 'DEWVEE Weekly Export – ' +
-      Utilities.formatDate(new Date(), 'UTC', 'dd MMM yyyy');
-    MailApp.sendEmail({
-      to:          emails.join(','),
-      subject:     subject,
-      body:        'Attached is the DEWVEE sensor data for the last 7 days.',
-      attachments: [Utilities.newBlob(csv, 'text/csv', 'dewvee_export.csv')]
-    });
-    status = 'OK:' + new Date().toISOString();
+    sendWeeklyReport_(emails.join(','));
+    sp.setProperty('EXPORT_STATUS', 'OK:' + new Date().toISOString());
   } catch(err) {
-    status = 'ERR:' + err.message + ':' + new Date().toISOString();
+    sp.setProperty('EXPORT_STATUS', 'ERR:' + err.message + ':' + new Date().toISOString());
     Logger.log('sendDailyExport failed: ' + err.message);
   }
-  sp.setProperty('EXPORT_STATUS', status);
+}
+
+// ================================================================
+//  Rich Weekly Report — charts via QuickChart.io + HTML email
+// ================================================================
+var REPORT_COLORS_ = ['#a78bfa','#60a5fa','#34d399','#fbbf24','#f87171'];
+
+function dewPoint_(t, h) {
+  var a = 17.27, b = 237.7;
+  var g = Math.log(Math.max(h, 1) / 100) + a * t / (b + t);
+  return Math.round(b * g / (a - g) * 10) / 10;
+}
+
+function hexToRgb_(hex) {
+  return parseInt(hex.slice(1,3),16)+','+parseInt(hex.slice(3,5),16)+','+parseInt(hex.slice(5,7),16);
+}
+
+function weekStats_(pts, snap, readingsMap) {
+  if (!pts || !pts.length) return null;
+  var temps = [], hums = [];
+  pts.forEach(function(p){ if(!isNaN(p.temp)&&p.temp>0) temps.push(p.temp); if(!isNaN(p.hum)&&p.hum>0) hums.push(p.hum); });
+  if (!temps.length) return null;
+  var tAvg = Math.round(temps.reduce(function(a,b){return a+b;},0)/temps.length*10)/10;
+  var hAvg = Math.round(hums.reduce(function(a,b){return a+b;},0)/hums.length*10)/10;
+  var proj = computeBatteryProjection_(readingsMap || null);
+  return {
+    tMin: Math.round(Math.min.apply(null,temps)*10)/10,
+    tMax: Math.round(Math.max.apply(null,temps)*10)/10,
+    tAvg: tAvg,
+    hMin: Math.round(Math.min.apply(null,hums)*10)/10,
+    hMax: Math.round(Math.max.apply(null,hums)*10)/10,
+    hAvg: hAvg,
+    dAvg: dewPoint_(tAvg, hAvg),
+    battDays: proj && proj.daysLeft ? Math.round(proj.daysLeft) : null,
+    battPct:  snap ? Math.round(snap.lastPct || 0) : null
+  };
+}
+
+// Daily averages — used for the all-device overview charts
+function dailyAvg_(pts, fromMs) {
+  var days = {};
+  var DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  pts.forEach(function(pt) {
+    var idx = Math.floor(pt.t / 86400000);
+    if (!days[idx]) {
+      var d = new Date(fromMs + pt.t);
+      days[idx] = { idx:idx, label: DAY_NAMES[d.getDay()], t:[], h:[] };
+    }
+    if (!isNaN(pt.temp)&&pt.temp>0) days[idx].t.push(pt.temp);
+    if (!isNaN(pt.hum) &&pt.hum>0)  days[idx].h.push(pt.hum);
+  });
+  return Object.keys(days).sort(function(a,b){return a-b;}).map(function(k){
+    var d = days[k];
+    var avgT = d.t.length ? d.t.reduce(function(a,b){return a+b;},0)/d.t.length : 0;
+    var avgH = d.h.length ? d.h.reduce(function(a,b){return a+b;},0)/d.h.length : 0;
+    return {
+      label: d.label,
+      avgT: Math.round(avgT*10)/10, avgH: Math.round(avgH*10)/10,
+      minT: d.t.length?Math.round(Math.min.apply(null,d.t)*10)/10:null,
+      maxT: d.t.length?Math.round(Math.max.apply(null,d.t)*10)/10:null
+    };
+  });
+}
+
+// Hourly averages — used for per-device detail charts
+function hourlyAvg_(pts, fromMs) {
+  var hours = {};
+  var DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  pts.forEach(function(pt) {
+    var idx = Math.floor(pt.t / 3600000);
+    if (!hours[idx]) {
+      var d = new Date(fromMs + pt.t);
+      hours[idx] = { idx:idx, label: DAY_NAMES[d.getDay()]+' '+d.getHours()+'h', t:[], h:[] };
+    }
+    if (!isNaN(pt.temp)&&pt.temp>0) hours[idx].t.push(pt.temp);
+    if (!isNaN(pt.hum) &&pt.hum>0)  hours[idx].h.push(pt.hum);
+  });
+  return Object.keys(hours).sort(function(a,b){return a-b;}).map(function(k){
+    var h = hours[k];
+    var avgT = h.t.length ? h.t.reduce(function(a,b){return a+b;},0)/h.t.length : 0;
+    var avgH = h.h.length ? h.h.reduce(function(a,b){return a+b;},0)/h.h.length : 0;
+    return { idx:parseInt(k), label:h.label,
+             avgT:Math.round(avgT*10)/10, avgH:Math.round(avgH*10)/10 };
+  });
+}
+
+function fetchQuickChart_(chartCfg, width, height) {
+  try {
+    var resp = UrlFetchApp.fetch('https://quickchart.io/chart', {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify({ width:width||600, height:height||200,
+                                backgroundColor:'#0f1117', format:'png', chart:chartCfg }),
+      muteHttpExceptions: true
+    });
+    if (resp.getResponseCode() !== 200) {
+      Logger.log('QuickChart ' + resp.getResponseCode() + ': ' + resp.getContentText().substring(0,300));
+      return null;
+    }
+    return resp.getBlob().setContentType('image/png');
+  } catch(e) { Logger.log('QuickChart error: ' + e.message); return null; }
+}
+
+// Chart.js v2 config for the all-device overview (daily averages)
+function overviewChartCfg_(dailyByDev, devOrder, devColors, field) {
+  var labels = [];
+  if (devOrder.length) labels = (dailyByDev[devOrder[0]]||[]).map(function(d){return d.label;});
+  var datasets = devOrder.map(function(dev,i){
+    var col = devColors[i], rgb = hexToRgb_(col);
+    return { label:dev, data:(dailyByDev[dev]||[]).map(function(d){return d[field];}),
+             borderColor:col, backgroundColor:'rgba('+rgb+',0.08)', fill:true,
+             borderWidth:2.5, tension:0.4, pointRadius:5,
+             pointBackgroundColor:col, pointBorderColor:'#0f1117', pointBorderWidth:1.5 };
+  });
+  return { type:'line', data:{ labels:labels, datasets:datasets },
+    options:{ scales:{
+      yAxes:[{ ticks:{ fontColor:'#9ca3af', fontSize:10 },
+               gridLines:{ color:'rgba(255,255,255,0.07)', zeroLineColor:'rgba(255,255,255,0.1)' } }],
+      xAxes:[{ ticks:{ fontColor:'#9ca3af', fontSize:10 },
+               gridLines:{ color:'rgba(255,255,255,0.07)' } }] },
+    legend:{ display:true, labels:{ fontColor:'#d1d5db', fontSize:11, padding:16 } },
+    layout:{ padding:{ left:8, right:8, top:10, bottom:8 } } } };
+}
+
+// Chart.js v2 config for an individual device (hourly, dual y-axis)
+function deviceChartCfg_(hourlyData) {
+  var labels = hourlyData.map(function(h){ return h.label; });
+  return { type:'line', data:{ labels:labels, datasets:[
+    { label:'Temperature (°C)', data:hourlyData.map(function(h){return h.avgT;}),
+      borderColor:'#f0a54e', backgroundColor:'rgba(240,165,78,0.08)',
+      fill:true, borderWidth:2, tension:0.4, pointRadius:0, yAxisID:'yT' },
+    { label:'Humidity (%)', data:hourlyData.map(function(h){return h.avgH;}),
+      borderColor:'#5b8cff', backgroundColor:'transparent',
+      fill:false, borderWidth:1.8, tension:0.4, pointRadius:0, yAxisID:'yH' }
+  ]}, options:{ scales:{
+    yAxes:[
+      { id:'yT', position:'left',
+        ticks:{ fontColor:'rgba(240,165,78,0.85)', fontSize:10 },
+        gridLines:{ color:'rgba(255,255,255,0.06)', zeroLineColor:'rgba(255,255,255,0.08)' } },
+      { id:'yH', position:'right',
+        ticks:{ fontColor:'rgba(91,140,255,0.75)', fontSize:10 },
+        gridLines:{ drawOnChartArea:false } }
+    ],
+    xAxes:[{ ticks:{ fontColor:'#4b5563', fontSize:9, maxTicksLimit:7, autoSkip:true },
+             gridLines:{ color:'rgba(255,255,255,0.05)' } }] },
+  legend:{ display:true, labels:{ fontColor:'#d1d5db', fontSize:10 } },
+  layout:{ padding:{ left:6, right:6, top:10, bottom:6 } } } };
+}
+
+function buildDeviceSummary_(dev, s) {
+  var humWord = s.hAvg > 82 ? 'persistently high' : s.hAvg > 74 ? 'elevated' : 'moderate';
+  var hSpike  = s.hMax >= 88 ? ' Spiked to ' + s.hMax.toFixed(0) + '% — ventilation advised.' : '';
+  return 'Avg temp <b>' + s.tAvg.toFixed(1) + '°C</b> (range ' + s.tMin.toFixed(1) + '–' + s.tMax.toFixed(1) + '°C). ' +
+         'Humidity ' + humWord + ' at ' + s.hAvg.toFixed(0) + '% avg.' + hSpike;
+}
+
+function buildSummaryText_(statsMap, devOrder) {
+  var hiDev = '', hiTemp = -99, loDev = '', loTemp = 99, humWarnings = [];
+  devOrder.forEach(function(dev){
+    var s = statsMap[dev]; if(!s) return;
+    if (s.tMax > hiTemp){ hiTemp = s.tMax; hiDev = dev; }
+    if (s.tMin < loTemp){ loTemp = s.tMin; loDev = dev; }
+    if (s.hMax >= 85) humWarnings.push(dev + ' (' + s.hMax.toFixed(0) + '%)');
+  });
+  var avgTemps = devOrder.map(function(d){ return statsMap[d]?statsMap[d].tAvg:null; }).filter(Boolean);
+  var grandAvg = avgTemps.length ? Math.round(avgTemps.reduce(function(a,b){return a+b;},0)/avgTemps.length*10)/10 : 0;
+  var txt = 'Indoor temperatures averaged <b>' + grandAvg + '°C across all rooms</b> this week. ';
+  txt += 'The week\'s peak was <b>' + hiTemp.toFixed(1) + '°C on ' + hiDev + '</b>, lowest was <b>' + loTemp.toFixed(1) + '°C</b>. ';
+  txt += humWarnings.length
+    ? 'Humidity exceeded 85% on <b>' + humWarnings.join(', ') + '</b> — ventilation is recommended. '
+    : 'Humidity stayed within manageable levels across all sensors. ';
+  txt += 'All sensors reported successfully. See the attached CSV for full raw data.';
+  return txt;
+}
+
+function buildReportHTML_(series, statsMap, fromMs, imageIds, devOrder, devColors) {
+  var dateStr = Utilities.formatDate(new Date(fromMs), 'UTC', 'MMM d') +
+                ' &ndash; ' + Utilities.formatDate(new Date(), 'UTC', 'MMM d, yyyy');
+  var W = 600;
+
+  function td(style, content){ return '<td style="' + style + '">' + content + '</td>'; }
+  function row(tds){ return '<tr>' + tds + '</tr>'; }
+  function lbl(txt, col){ return '<p style="margin:0 0 8px;font-size:10px;font-weight:700;color:' + col + ';text-transform:uppercase;letter-spacing:0.09em;">' + txt + '</p>'; }
+  function img(cid, w){ return '<img src="cid:' + cid + '" width="' + w + '" style="display:block;width:100%;max-width:' + w + 'px;border-radius:6px;" />'; }
+
+  var h = '<!DOCTYPE html><html><head><meta charset="UTF-8"></head>';
+  h += '<body style="margin:0;padding:20px 0;background:#06070a;font-family:Arial,Helvetica,sans-serif;">';
+  h += '<table width="' + W + '" cellpadding="0" cellspacing="0" align="center" style="background:#0f1117;">';
+
+  // Header
+  h += row(td('padding:22px 28px;background:#161924;border-bottom:1px solid rgba(255,255,255,0.07);',
+    '<table width="100%" cellpadding="0" cellspacing="0"><tr>' +
+    td('', '<span style="font-size:24px;font-weight:900;color:#f2f4f7;letter-spacing:0.15em;">DEWVEE</span><br>' +
+           '<span style="font-size:10px;color:#4b5563;letter-spacing:0.1em;font-weight:700;">WEEKLY CLIMATE REPORT</span>') +
+    td('text-align:right;', '<span style="font-size:14px;font-weight:600;color:#d1d5db;">' + dateStr + '</span><br>' +
+           '<span style="font-size:10px;color:#374151;">' + devOrder.length + ' sensors active</span>') +
+    '</tr></table>'));
+
+  // Temp overview chart
+  h += row(td('padding:16px 20px 4px;',
+    lbl('Temperature &mdash; All Devices (Daily Average)', '#f0a54e') +
+    (imageIds.chartTemp ? img(imageIds.chartTemp, W-40) : '<p style="color:#4b5563;font-size:11px;">Chart unavailable</p>')));
+
+  // Hum overview chart
+  h += row(td('padding:4px 20px 16px;',
+    lbl('Relative Humidity &mdash; All Devices (Daily Average)', '#5b8cff') +
+    (imageIds.chartHum ? img(imageIds.chartHum, W-40) : '<p style="color:#4b5563;font-size:11px;">Chart unavailable</p>')));
+
+  // Summary block
+  h += row(td('padding:0 20px 16px;',
+    '<div style="background:rgba(91,140,255,0.06);border:1px solid rgba(91,140,255,0.15);border-radius:8px;padding:14px 16px;">' +
+    '<p style="margin:0 0 6px;font-size:10px;font-weight:700;color:#5b8cff;text-transform:uppercase;letter-spacing:0.1em;">&#128202; Week Summary</p>' +
+    '<p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.8;">' + buildSummaryText_(statsMap, devOrder) + '</p>' +
+    '</div>'));
+
+  // Section divider
+  h += row(td('padding:0 20px;', '<hr style="border:none;border-top:1px solid rgba(255,255,255,0.07);margin:0;" />'));
+  h += row(td('padding:10px 20px 4px;font-size:10px;font-weight:700;color:#4b5563;text-transform:uppercase;letter-spacing:0.09em;', 'Individual Device Reports'));
+
+  // Per-device sections
+  devOrder.forEach(function(dev, i) {
+    var s = statsMap[dev]; if (!s) return;
+    var col = devColors[i] || '#ffffff';
+    var cid = imageIds['dev_' + i];
+    var battStr = s.battDays ? '~' + s.battDays + 'd remaining' : (s.battPct != null ? s.battPct + '%' : 'N/A');
+    var battCol = (s.battDays||99) > 45 ? '#4ec46a' : (s.battDays||99) > 20 ? '#e8a020' : '#e05050';
+
+    h += row(td('padding:4px 20px;',
+      '<table width="100%" cellpadding="0" cellspacing="0" style="background:#151820;border:1px solid rgba(255,255,255,0.08);border-radius:8px;">' +
+      // device header
+      row(td('padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.06);',
+        '<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:' + col + ';margin-right:8px;vertical-align:middle;"></span>' +
+        '<span style="font-size:13px;font-weight:700;color:#e5e7eb;">' + dev + '</span>')) +
+      // chart
+      row(td('padding:10px 14px 4px;',
+        cid ? img(cid, W-68) : '<p style="font-size:11px;color:#4b5563;margin:0;">Chart unavailable</p>')) +
+      // stats row
+      row(td('padding:4px 14px 6px;',
+        '<table width="100%" cellpadding="4" cellspacing="0">' +
+        // temp stats
+        '<tr><td style="font-size:9px;color:#4b5563;font-weight:700;text-transform:uppercase;width:80px;">Temperature</td>' +
+        '<td style="text-align:center;background:rgba(255,255,255,0.04);border-radius:4px;"><span style="display:block;font-size:12px;font-weight:700;color:#e5e7eb;">' + s.tMin.toFixed(1) + '°</span><span style="font-size:8px;color:#6b7280;">LOW</span></td>' +
+        '<td style="text-align:center;background:rgba(255,255,255,0.06);border-radius:4px;"><span style="display:block;font-size:13px;font-weight:700;color:#f0a54e;">' + s.tAvg.toFixed(1) + '°</span><span style="font-size:8px;color:#6b7280;">AVG</span></td>' +
+        '<td style="text-align:center;background:rgba(255,255,255,0.04);border-radius:4px;"><span style="display:block;font-size:12px;font-weight:700;color:#e5e7eb;">' + s.tMax.toFixed(1) + '°</span><span style="font-size:8px;color:#6b7280;">HIGH</span></td></tr>' +
+        // hum stats
+        '<tr><td style="font-size:9px;color:#4b5563;font-weight:700;text-transform:uppercase;">Humidity</td>' +
+        '<td style="text-align:center;background:rgba(255,255,255,0.04);border-radius:4px;"><span style="display:block;font-size:12px;font-weight:700;color:#e5e7eb;">' + s.hMin.toFixed(0) + '%</span><span style="font-size:8px;color:#6b7280;">LOW</span></td>' +
+        '<td style="text-align:center;background:rgba(255,255,255,0.06);border-radius:4px;"><span style="display:block;font-size:13px;font-weight:700;color:#f0a54e;">' + s.hAvg.toFixed(0) + '%</span><span style="font-size:8px;color:#6b7280;">AVG</span></td>' +
+        '<td style="text-align:center;background:rgba(255,255,255,0.04);border-radius:4px;"><span style="display:block;font-size:12px;font-weight:700;color:#e5e7eb;">' + s.hMax.toFixed(0) + '%</span><span style="font-size:8px;color:#6b7280;">HIGH</span></td></tr>' +
+        // dew + battery
+        '<tr><td style="font-size:9px;color:#4b5563;font-weight:700;text-transform:uppercase;">Dew Point</td>' +
+        '<td colspan="2" style="background:rgba(62,207,142,0.07);border-radius:4px;text-align:center;">' +
+        '<span style="font-size:13px;font-weight:700;color:#3ecf8e;">' + s.dAvg.toFixed(1) + '°C</span></td>' +
+        '<td style="background:rgba(255,255,255,0.04);border-radius:4px;text-align:center;">' +
+        '<span style="font-size:11px;font-weight:700;color:' + battCol + ';">' + battStr + '</span>' +
+        '<span style="display:block;font-size:8px;color:#4b5563;">BATTERY</span></td></tr>' +
+        '</table>')) +
+      // summary text
+      row(td('padding:2px 14px 10px;font-size:11px;color:#6b7280;line-height:1.65;', buildDeviceSummary_(dev, s))) +
+      '</table>'));
+    h += row(td('height:8px;', ''));  // spacer between devices
+  });
+
+  // Footer
+  h += row(td('padding:10px 20px 14px;border-top:1px solid rgba(255,255,255,0.06);',
+    '<table width="100%" cellpadding="0" cellspacing="0"><tr>' +
+    td('font-size:10px;color:#374151;', 'Generated by DEWVEE &middot; ' +
+       Utilities.formatDate(new Date(), 'UTC', 'dd MMM yyyy HH:mm') + ' UTC') +
+    td('font-size:10px;color:#374151;text-align:right;', 'Attached: dewvee_export.csv') +
+    '</tr></table>'));
+
+  h += '</table></body></html>';
+  return h;
+}
+
+// Main report function — fetch data, render charts, send email
+function sendWeeklyReport_(recipients) {
+  var fromMs = Date.now() - 7 * 86400000;
+  var toMs   = Date.now();
+  var scan   = scanAllSheets_({ fromMs: fromMs, toMs: toMs });
+  var series = scan.series;
+  var devOrder = Object.keys(series).sort();
+  if (!devOrder.length) { Logger.log('sendWeeklyReport_: no data for last 7 days'); return; }
+
+  var devColors = devOrder.map(function(d,i){ return REPORT_COLORS_[i % REPORT_COLORS_.length]; });
+
+  // Stats per device
+  var statsMap = {};
+  devOrder.forEach(function(dev){
+    statsMap[dev] = weekStats_(series[dev], scan.dataSnap[dev], scan.readingsMap[dev]);
+  });
+
+  // Aggregate data for charts
+  var dailyByDev = {}, hourlyByDev = {};
+  devOrder.forEach(function(dev){
+    dailyByDev[dev]  = dailyAvg_(series[dev],  fromMs);
+    hourlyByDev[dev] = hourlyAvg_(series[dev], fromMs);
+  });
+
+  // Fetch chart images
+  var blobs = {}, imageIds = {};
+
+  var tb = fetchQuickChart_(overviewChartCfg_(dailyByDev, devOrder, devColors, 'avgT'), 600, 210);
+  if (tb) { tb.setName('ct.png'); blobs['chartTemp'] = tb; imageIds.chartTemp = 'chartTemp'; }
+
+  var hb = fetchQuickChart_(overviewChartCfg_(dailyByDev, devOrder, devColors, 'avgH'), 600, 210);
+  if (hb) { hb.setName('ch.png'); blobs['chartHum']  = hb; imageIds.chartHum  = 'chartHum'; }
+
+  devOrder.forEach(function(dev, i){
+    var hourly = hourlyByDev[dev];
+    if (!hourly || !hourly.length) return;
+    var blob = fetchQuickChart_(deviceChartCfg_(hourly), 560, 175);
+    if (blob) {
+      var cid = 'dev' + i;
+      blob.setName(cid + '.png');
+      blobs[cid] = blob;
+      imageIds['dev_' + i] = cid;
+    }
+  });
+
+  // CSV
+  var csvRows = [['Timestamp','Device','Temperature(C)','Humidity(%)','Battery(%)','Voltage(V)']];
+  devOrder.forEach(function(dev){
+    series[dev].forEach(function(pt){
+      csvRows.push([ Utilities.formatDate(new Date(fromMs+pt.t),'UTC','yyyy-MM-dd HH:mm:ss'),
+                     dev, pt.temp, pt.hum, pt.pct, pt.v ]);
+    });
+  });
+  csvRows.sort(function(a,b){ return a[0]<b[0]?-1:a[0]>b[0]?1:0; });
+  var csv = csvRows.map(function(r){
+    return r.map(function(c){ return '"'+String(c).replace(/"/g,'""')+'"'; }).join(',');
+  }).join('\n');
+
+  var subject = 'DEWVEE Weekly Climate Report — ' +
+    Utilities.formatDate(new Date(fromMs),'UTC','MMM d') + ' to ' +
+    Utilities.formatDate(new Date(),'UTC','MMM d, yyyy');
+
+  MailApp.sendEmail({
+    to:           recipients,
+    subject:      subject,
+    body:         'DEWVEE Weekly Climate Report — open with an HTML-capable email client to view charts.',
+    htmlBody:     buildReportHTML_(series, statsMap, fromMs, imageIds, devOrder, devColors),
+    attachments:  [Utilities.newBlob(csv, 'text/csv', 'dewvee_export.csv')],
+    inlineImages: blobs
+  });
+  Logger.log('Report sent to ' + recipients + ' — ' + Object.keys(blobs).length + ' charts.');
+}
+
+// Run this from the Apps Script editor to send an immediate demo report
+function sendDemoReport() {
+  sendWeeklyReport_('Thejthimmaiah04@gmail.com');
 }
 
 // ================================================================
