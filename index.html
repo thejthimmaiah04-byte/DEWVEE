@@ -2748,6 +2748,11 @@
       var res={series:{}};
       try{ res=devs.length ? await gcall('getReadings',{range:fetchRange, devices:devs.join(',')}) : {series:{}}; }catch(e){}
 
+      // API stores t as offset from fetch window start (t = ts - fromMs).
+      // Convert back to absolute ms so sliceSeries can filter by wall-clock time.
+      var fetchFromMs=res.from||0;
+      if(fetchFromMs){ Object.keys(res.series||{}).forEach(function(dev){ (res.series[dev]||[]).forEach(function(p){ p.t+=fetchFromMs; }); }); }
+
       function sliceSeries(src,from,to){
         var out={};
         Object.keys(src).forEach(function(dev){
