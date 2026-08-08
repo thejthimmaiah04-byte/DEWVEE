@@ -721,15 +721,49 @@ function overviewChartCfg_(dailyByDev, devOrder, devColors, field) {
 }
 
 // Chart.js v2 config for an individual device (hourly, dual y-axis)
-function deviceChartCfg_(hourlyData) {
+// dewAvg: dew point °C to draw as dashed reference line on yT
+// t/hHighIdx, t/hLowIdx: hourlyData indices where the extreme values occur
+function deviceChartCfg_(hourlyData, dewAvg, tHighIdx, tLowIdx, hHighIdx, hLowIdx) {
   var labels = hourlyData.map(function(h){ return h.label; });
+  var tData  = hourlyData.map(function(h){ return h.avgT; });
+  var hData  = hourlyData.map(function(h){ return h.avgH; });
+  var n      = hourlyData.length;
+
+  // Single-point null arrays for markers (Chart.js renders only non-null points)
+  function mkr(arr, idx) { return arr.map(function(v,i){ return i===idx ? v : null; }); }
+
+  var tHigh = tData[tHighIdx], tLow = tData[tLowIdx];
+  var hHigh = hData[hHighIdx], hLow = hData[hLowIdx];
+
   return { type:'line', data:{ labels:labels, datasets:[
-    { label:'Temperature (°C)', data:hourlyData.map(function(h){return h.avgT;}),
+    // main temp line
+    { label:'Temp (°C)', data:tData,
       borderColor:'#f0a54e', backgroundColor:'rgba(240,165,78,0.08)',
       fill:true, borderWidth:2, tension:0.4, pointRadius:0, yAxisID:'yT' },
-    { label:'Humidity (%)', data:hourlyData.map(function(h){return h.avgH;}),
+    // main humidity line
+    { label:'Humidity (%)', data:hData,
       borderColor:'#5b8cff', backgroundColor:'transparent',
-      fill:false, borderWidth:1.8, tension:0.4, pointRadius:0, yAxisID:'yH' }
+      fill:false, borderWidth:1.8, tension:0.4, pointRadius:0, yAxisID:'yH' },
+    // dew point reference line — dashed green on yT
+    { label:'Dew '+dewAvg+'°C', data:Array(n).fill(dewAvg),
+      borderColor:'#3ecf8e', borderDash:[6,4], borderWidth:1.5,
+      fill:false, pointRadius:0, tension:0, yAxisID:'yT' },
+    // temp HIGH marker — orange dot
+    { label:'T▲ '+tHigh+'°', data:mkr(tData, tHighIdx),
+      borderColor:'#f0a54e', backgroundColor:'#f0a54e',
+      showLine:false, fill:false, pointRadius:7, yAxisID:'yT' },
+    // temp LOW marker — blue dot
+    { label:'T▼ '+tLow+'°', data:mkr(tData, tLowIdx),
+      borderColor:'#60a5fa', backgroundColor:'#60a5fa',
+      showLine:false, fill:false, pointRadius:7, yAxisID:'yT' },
+    // hum HIGH marker — sky dot
+    { label:'H▲ '+hHigh+'%', data:mkr(hData, hHighIdx),
+      borderColor:'#38bdf8', backgroundColor:'#38bdf8',
+      showLine:false, fill:false, pointRadius:7, yAxisID:'yH' },
+    // hum LOW marker — indigo dot
+    { label:'H▼ '+hLow+'%', data:mkr(hData, hLowIdx),
+      borderColor:'#818cf8', backgroundColor:'#818cf8',
+      showLine:false, fill:false, pointRadius:7, yAxisID:'yH' }
   ]}, options:{ scales:{
     yAxes:[
       { id:'yT', position:'left',
@@ -741,7 +775,7 @@ function deviceChartCfg_(hourlyData) {
     ],
     xAxes:[{ ticks:{ fontColor:'#4b5563', fontSize:9, maxTicksLimit:7, autoSkip:true },
              gridLines:{ color:'rgba(255,255,255,0.05)' } }] },
-  legend:{ display:true, labels:{ fontColor:'#d1d5db', fontSize:10 } },
+  legend:{ display:true, labels:{ fontColor:'#d1d5db', fontSize:10, boxWidth:10 } },
   layout:{ padding:{ left:6, right:6, top:10, bottom:6 } } } };
 }
 
@@ -854,7 +888,7 @@ function buildReportHTML_(series, statsMap, fromMs, imageIds, devOrder, devColor
         '<span style="display:block;font-size:8px;color:#4b5563;">BATTERY</span></td></tr>' +
         '</table>')) +
       // summary text
-      row(td('padding:2px 14px 10px;font-size:11px;color:#6b7280;line-height:1.65;', buildDeviceSummary_(dev, s))) +
+      row(td('padding:6px 14px 12px;font-size:11px;color:#9ca3af;line-height:1.7;border-top:1px solid rgba(255,255,255,0.05);', buildDeviceSummary_(dev, s))) +
       '</table>'));
     h += row(td('height:8px;', ''));  // spacer between devices
   });
@@ -907,7 +941,19 @@ function sendWeeklyReport_(recipients) {
   devOrder.forEach(function(dev, i){
     var hourly = hourlyByDev[dev];
     if (!hourly || !hourly.length) return;
-    var blob = fetchQuickChart_(deviceChartCfg_(hourly), 560, 175);
+
+    // Find indices of temperature and humidity extremes in the hourly series
+    var tHiIdx=0, tLoIdx=0, hHiIdx=0, hLoIdx=0;
+    var tHi=-Infinity, tLo=Infinity, hHi=-Infinity, hLo=Infinity;
+    hourly.forEach(function(h, idx){
+      if (h.avgT > tHi){ tHi=h.avgT; tHiIdx=idx; }
+      if (h.avgT < tLo){ tLo=h.avgT; tLoIdx=idx; }
+      if (h.avgH > hHi){ hHi=h.avgH; hHiIdx=idx; }
+      if (h.avgH < hLo){ hLo=h.avgH; hLoIdx=idx; }
+    });
+    var dewAvg = (statsMap[dev] && statsMap[dev].dAvg) ? statsMap[dev].dAvg : 20;
+
+    var blob = fetchQuickChart_(deviceChartCfg_(hourly, dewAvg, tHiIdx, tLoIdx, hHiIdx, hLoIdx), 560, 185);
     if (blob) {
       var cid = 'dev' + i;
       blob.setName(cid + '.png');
