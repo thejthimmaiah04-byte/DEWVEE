@@ -3620,7 +3620,7 @@
       ctx.closePath(); ctx.fillStyle=tGr; ctx.fill();
 
       // Dynamic dew point line (dashed green)
-      ctx.beginPath(); ctx.setLineDash([6,4]); ctx.strokeStyle='#3ecf8e'; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.setLineDash([6,4]); ctx.strokeStyle='#3ecf8e'; ctx.lineWidth=2;
       rptSmooth(ctx,hourlyData,px,function(p){return pyT(rptDewPt(p.avgT,p.avgH));});
       ctx.stroke(); ctx.setLineDash([]);
 
@@ -3684,7 +3684,8 @@
       if(s.hMax>=88) txt+=' A spike to <b>'+Math.round(s.hMax)+'%</b> was recorded &#8212; ventilation advised.';
       if(s.dAvg>21) txt+=' Dew points averaging <b>'+s.dAvg.toFixed(1)+'&#176;C</b> confirm high ambient moisture.';
       else txt+=' Dew point within expected range.';
-      if(s.battPct!=null) txt+=' Battery: <b>'+s.battPct+'%</b>.';
+      if(s.battDays!=null) txt+=' Battery: approx. <b>'+s.battDays+' days</b> remaining.';
+      else if(s.battPct!=null) txt+=' Battery: <b>'+s.battPct+'%</b>.';
       return txt;
     }
 
@@ -3752,8 +3753,8 @@
       devOrder.forEach(function(dev,i){
         var s=statsMap[dev]; if(!s) return;
         var col=devColors[i]||'#fff', cid=cidMap['dev'+i];
-        var bp=s.battPct!=null?s.battPct:null;
-        var bc=bp>60?'#4ec46a':bp>30?'#e8a020':'#e05050';
+        var bd=s.battDays!=null?s.battDays:null;
+        var bc=bd>45?'#4ec46a':bd>14?'#e8a020':'#e05050';
 
         h+='<tr><td style="padding:4px 20px 8px;">';
         // Card
@@ -3799,11 +3800,8 @@
         // Battery box
         h+='<td><div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:7px;padding:7px 8px;">'
           +'<div style="font-size:8px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px;">Battery</div>'
-          +'<div style="font-size:18px;font-weight:700;color:'+(bc)+';line-height:1;">'+(bp!=null?bp+'%':'N/A')+'</div>'
-          +(bp!=null?'<table width="100%" cellpadding="0" cellspacing="0" style="margin-top:4px;"><tr>'
-            +'<td width="'+bp+'%" style="height:3px;background:'+bc+';border-radius:2px 0 0 2px;font-size:0;">&nbsp;</td>'
-            +'<td style="height:3px;background:rgba(255,255,255,.1);border-radius:0 2px 2px 0;font-size:0;">&nbsp;</td>'
-            +'</tr></table>':'')
+          +'<div style="font-size:18px;font-weight:700;color:'+(bc)+';line-height:1;">'+(bd!=null?'~'+bd+'d':'N/A')+'</div>'
+          +'<div style="font-size:8px;color:#4b5563;margin-top:2px;">'+(bd!=null?'days left':'no data')+'</div>'
           +'</div></td>';
         h+='</tr></table>';
 
@@ -3855,6 +3853,13 @@
         devOrder.forEach(function(dev){
           statsMap[dev]=rptWeekStats(series[dev]);
           hourlyByDev[dev]=rptHourlyAvg(series[dev],fromMs);
+        });
+        // Enrich statsMap with battery projection from cached device list
+        devOrder.forEach(function(dev){
+          var s=statsMap[dev]; if(!s) return;
+          var info=(aexDevices||[]).filter(function(d){return d.device===dev;})[0];
+          if(info && info.battProj && info.battProj.daysLeft>0) s.battDays=Math.round(info.battProj.daysLeft);
+          if(info && info.pct!=null) s.battPct=Math.round(info.pct);
         });
         rptSetProg(25,'Rendering temperature overview…');
         var images={};
