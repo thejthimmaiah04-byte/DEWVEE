@@ -3443,7 +3443,7 @@
     function rptHexRgb(h){ return parseInt(h.slice(1,3),16)+','+parseInt(h.slice(3,5),16)+','+parseInt(h.slice(5,7),16); }
     function rptDewPt(t,h){ var a=17.27,b=237.7,g=Math.log(Math.max(h,1)/100)+a*t/(b+t); return Math.round(b*g/(a-g)*10)/10; }
 
-    // Hourly averages — includes day field for X-axis rendering
+    // Hourly averages — each point carries t (ms offset from fromMs) for temporal X positioning
     function rptHourlyAvg(pts,fromMs){
       var hours={}, DN=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
       pts.forEach(function(r){
@@ -3454,8 +3454,23 @@
       });
       return Object.keys(hours).sort(function(a,b){return a-b;}).map(function(k){
         var h=hours[k],s=function(a){return a.reduce(function(x,y){return x+y;},0);};
-        return {day:h.day, avgT:h.t.length?Math.round(s(h.t)/h.t.length*10)/10:0, avgH:h.h.length?Math.round(s(h.h)/h.h.length*10)/10:0};
+        return {day:h.day, t:parseInt(k)*3600000,
+                avgT:h.t.length?Math.round(s(h.t)/h.t.length*10)/10:0,
+                avgH:h.h.length?Math.round(s(h.h)/h.h.length*10)/10:0};
       });
+    }
+
+    // Catmull-Rom → cubic bezier smooth through canvas points
+    function rptSmooth(ctx,pts,xFn,yFn){
+      if(!pts.length) return;
+      ctx.moveTo(xFn(pts[0]),yFn(pts[0]));
+      for(var i=0;i<pts.length-1;i++){
+        var p0=pts[i>0?i-1:0], p1=pts[i], p2=pts[i+1], p3=i<pts.length-2?pts[i+2]:pts[i+1];
+        ctx.bezierCurveTo(
+          xFn(p1)+(xFn(p2)-xFn(p0))/6, yFn(p1)+(yFn(p2)-yFn(p0))/6,
+          xFn(p2)-(xFn(p3)-xFn(p1))/6, yFn(p2)-(yFn(p3)-yFn(p1))/6,
+          xFn(p2),yFn(p2));
+      }
     }
 
     // Week stats — includes dew point range from individual readings
@@ -3481,15 +3496,6 @@
       };
     }
 
-    // Find where day changes in hourly data for X-axis labels
-    function rptDayMarks(hourlyData){
-      var marks=[];
-      hourlyData.forEach(function(h,i){
-        if(i===0||h.day!==hourlyData[i-1].day) marks.push({i:i,lbl:h.day});
-      });
-      return marks;
-    }
-
     function rptRRect(ctx,x,y,w,h,r){
       ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.arcTo(x+w,y,x+w,y+r,r);
       ctx.lineTo(x+w,y+h-r); ctx.arcTo(x+w,y+h,x+w-r,y+h,r);
@@ -3497,18 +3503,18 @@
       ctx.lineTo(x,y+r); ctx.arcTo(x,y,x+r,y,r); ctx.closePath();
     }
 
-    // Overview chart — all devices, hourly detail, day-boundary X-axis
-    function rptDrawOverview(ctx,W,H,hourlyByDev,devOrder,devColors,field){
-      var ML=42,MR=14,MT=14,MB=28, CW=W-ML-MR, CH=H-MT-MB;
+    // Overview — temporal X (real timestamps), bezier smooth curves, 7 day columns
+    function rptDrawOverview(ctx,W,H,hourlyByDev,devOrder,devColors,field,fromMs){
+      var ML=42,MR=14,MT=16,MB=28, CW=W-ML-MR, CH=H-MT-MB;
+      var WEEK=7*86400000, DN=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
       var allV=[];
       devOrder.forEach(function(dev){ (hourlyByDev[dev]||[]).forEach(function(d){ if(d[field]>0)allV.push(d[field]); }); });
       if(!allV.length) return;
       var vMin=Math.min.apply(null,allV)-1.5, vMax=Math.max.apply(null,allV)+1.5;
-      var n=(hourlyByDev[devOrder[0]]||[]).length; if(!n) return;
-      function px(i){ return ML+i/Math.max(n-1,1)*CW; }
+      function px(pt){ return ML+pt.t/WEEK*CW; }
       function py(v){ return MT+CH-(v-vMin)/(vMax-vMin)*CH; }
 
-      // Grid + Y labels
+      // Grid + Y axis labels
       ctx.strokeStyle='rgba(255,255,255,0.07)'; ctx.lineWidth=1;
       ctx.font='9px Arial,sans-serif'; ctx.textAlign='right';
       for(var g=0;g<=4;g++){
@@ -3517,68 +3523,65 @@
         ctx.fillStyle='#6b7280'; ctx.fillText(field==='avgT'?gv.toFixed(1)+'°':Math.round(gv)+'%',ML-4,gy+3.5);
       }
 
-      // Day boundary lines + X labels
-      var dayMarks=rptDayMarks(hourlyByDev[devOrder[0]]||[]);
+      // Day boundary lines + day name labels (computed from fromMs)
       ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=1;
-      dayMarks.forEach(function(dm){
-        if(dm.i===0) return;
-        ctx.beginPath(); ctx.moveTo(px(dm.i),MT); ctx.lineTo(px(dm.i),MT+CH); ctx.stroke();
-      });
       ctx.fillStyle='#6b7280'; ctx.font='9px Arial,sans-serif'; ctx.textAlign='center';
-      dayMarks.forEach(function(dm,di){
-        var nextI=di+1<dayMarks.length?dayMarks[di+1].i:n;
-        ctx.fillText(dm.lbl, px((dm.i+nextI)/2), MT+CH+16);
-      });
+      for(var d=0;d<7;d++){
+        var dt=d*86400000;
+        if(d>0){ ctx.beginPath(); ctx.moveTo(ML+dt/WEEK*CW,MT); ctx.lineTo(ML+dt/WEEK*CW,MT+CH); ctx.stroke(); }
+        ctx.fillText(DN[new Date(fromMs+dt).getUTCDay()], ML+(dt+43200000)/WEEK*CW, MT+CH+16);
+      }
 
-      // Per-device lines (draw fills first, then lines on top)
+      // Fills first (behind lines)
       devOrder.forEach(function(dev,di){
         var pts=hourlyByDev[dev]||[]; if(!pts.length) return;
         var col=devColors[di], rgb=rptHexRgb(col);
         var gr=ctx.createLinearGradient(0,MT,0,MT+CH);
-        gr.addColorStop(0,'rgba('+rgb+',0.10)'); gr.addColorStop(1,'rgba('+rgb+',0)');
+        gr.addColorStop(0,'rgba('+rgb+',0.13)'); gr.addColorStop(1,'rgba('+rgb+',0)');
         ctx.beginPath();
-        pts.forEach(function(d,i){ var x=px(i),y=py(d[field]||vMin); i?ctx.lineTo(x,y):ctx.moveTo(x,y); });
-        ctx.lineTo(px(pts.length-1),MT+CH); ctx.lineTo(px(0),MT+CH); ctx.closePath();
-        ctx.fillStyle=gr; ctx.fill();
+        rptSmooth(ctx,pts,px,function(p){return py(p[field]||vMin);});
+        ctx.lineTo(px(pts[pts.length-1]),MT+CH); ctx.lineTo(px(pts[0]),MT+CH);
+        ctx.closePath(); ctx.fillStyle=gr; ctx.fill();
       });
+
+      // Lines on top
       devOrder.forEach(function(dev,di){
         var pts=hourlyByDev[dev]||[]; if(!pts.length) return;
-        var col=devColors[di];
-        ctx.beginPath(); ctx.strokeStyle=col; ctx.lineWidth=1.6; ctx.lineJoin='round';
-        pts.forEach(function(d,i){ var x=px(i),y=py(d[field]||vMin); i?ctx.lineTo(x,y):ctx.moveTo(x,y); });
+        ctx.beginPath(); ctx.strokeStyle=devColors[di]; ctx.lineWidth=1.8; ctx.lineJoin='round';
+        rptSmooth(ctx,pts,px,function(p){return py(p[field]||vMin);});
         ctx.stroke();
       });
 
-      // Legend — top left inline
+      // Legend — top margin
       var lx=ML;
       devOrder.forEach(function(dev,di){
-        var col=devColors[di];
-        ctx.beginPath(); ctx.arc(lx+3,4,3,0,Math.PI*2); ctx.fillStyle=col; ctx.fill();
+        ctx.beginPath(); ctx.arc(lx+3,5,3,0,Math.PI*2); ctx.fillStyle=devColors[di]; ctx.fill();
         ctx.fillStyle='#9ca3af'; ctx.font='8.5px Arial,sans-serif'; ctx.textAlign='left';
-        ctx.fillText(dev,lx+9,7.5);
-        lx+=ctx.measureText(dev).width+22;
+        ctx.fillText(dev,lx+9,8.5); lx+=ctx.measureText(dev).width+22;
       });
     }
 
-    // Per-device chart — matches artifact: orange temp, blue hum, green dashed dew, day X-axis, bottom legend
-    function rptDrawDevice(ctx,W,H,hourlyData,dewAvg){
+    // Per-device chart — temporal X, bezier curves, dynamic dew point line, pill markers
+    function rptDrawDevice(ctx,W,H,hourlyData,fromMs){
       var ML=40,MR=40,MT=16,MB=40, CW=W-ML-MR, CH=H-MT-MB;
       var n=hourlyData.length; if(!n) return;
+      var WEEK=7*86400000, DN=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
       var tV=hourlyData.map(function(h){return h.avgT;});
       var hV=hourlyData.map(function(h){return h.avgH;});
+      var dV=hourlyData.map(function(h){return rptDewPt(h.avgT,h.avgH);});
 
-      // Extremes
       var tHiI=0,tLoI=0,hHiI=0,hLoI=0;
       tV.forEach(function(v,i){ if(v>tV[tHiI])tHiI=i; if(v<tV[tLoI])tLoI=i; });
       hV.forEach(function(v,i){ if(v>hV[hHiI])hHiI=i; if(v<hV[hLoI])hLoI=i; });
 
-      // Scales — nice rounded boundaries
-      var TMIN=Math.floor((Math.min.apply(null,tV.concat([dewAvg]))-1.2)*2)/2;
+      var allDew=dV.filter(function(v){return v>-50;});
+      var TMIN=Math.floor((Math.min.apply(null,tV.concat(allDew))-1.2)*2)/2;
       var TMAX=Math.ceil((Math.max.apply(null,tV)+1.2)*2)/2;
       var HMIN=Math.floor(Math.min.apply(null,hV)-3);
       var HMAX=Math.ceil(Math.max.apply(null,hV)+3);
 
-      function px(i){ return ML+i/Math.max(n-1,1)*CW; }
+      function px(pt){ return ML+pt.t/WEEK*CW; }
       function pyT(v){ return MT+CH-(v-TMIN)/(TMAX-TMIN)*CH; }
       function pyH(v){ return MT+CH-(v-HMIN)/(HMAX-HMIN)*CH; }
 
@@ -3589,18 +3592,14 @@
         var gy=MT+CH*g/4; ctx.beginPath(); ctx.moveTo(ML,gy); ctx.lineTo(ML+CW,gy); ctx.stroke();
       }
 
-      // Day boundary verticals + X labels
-      var dayMarks=rptDayMarks(hourlyData);
+      // Day boundary lines + X labels (temporal, from fromMs)
       ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=1;
-      dayMarks.forEach(function(dm){
-        if(dm.i===0) return;
-        ctx.beginPath(); ctx.moveTo(px(dm.i),MT); ctx.lineTo(px(dm.i),MT+CH); ctx.stroke();
-      });
       ctx.fillStyle='#6b7280'; ctx.font='8.5px Arial,sans-serif'; ctx.textAlign='center';
-      dayMarks.forEach(function(dm,di){
-        var nextI=di+1<dayMarks.length?dayMarks[di+1].i:n;
-        ctx.fillText(dm.lbl, px((dm.i+nextI)/2), MT+CH+13);
-      });
+      for(var d=0;d<7;d++){
+        var dt=d*86400000;
+        if(d>0){ ctx.beginPath(); ctx.moveTo(ML+dt/WEEK*CW,MT); ctx.lineTo(ML+dt/WEEK*CW,MT+CH); ctx.stroke(); }
+        ctx.fillText(DN[new Date(fromMs+dt).getUTCDay()], ML+(dt+43200000)/WEEK*CW, MT+CH+13);
+      }
 
       // Y-axis labels
       ctx.font='8.5px Arial,sans-serif';
@@ -3612,62 +3611,56 @@
         ctx.fillText(Math.round(HMIN+(HMAX-HMIN)*g/4)+'%', ML+CW+4, gy2+3.5);
       }
 
-      // Dew point dashed reference line
-      var dewY=pyT(dewAvg);
-      ctx.beginPath(); ctx.setLineDash([6,4]); ctx.strokeStyle='#3ecf8e'; ctx.lineWidth=1.5;
-      ctx.moveTo(ML,dewY); ctx.lineTo(ML+CW,dewY); ctx.stroke(); ctx.setLineDash([]);
-      ctx.fillStyle='rgba(62,207,142,0.7)'; ctx.font='7.5px Arial,sans-serif'; ctx.textAlign='left';
-      ctx.fillText('Dew '+dewAvg+'°', ML+2, dewY-4);
-
-      // Temperature gradient fill
+      // Temperature fill
       var tGr=ctx.createLinearGradient(0,MT,0,MT+CH);
       tGr.addColorStop(0,'rgba(240,165,78,0.22)'); tGr.addColorStop(1,'rgba(240,165,78,0.01)');
       ctx.beginPath();
-      tV.forEach(function(v,i){ i?ctx.lineTo(px(i),pyT(v)):ctx.moveTo(px(i),pyT(v)); });
-      ctx.lineTo(px(n-1),MT+CH); ctx.lineTo(px(0),MT+CH); ctx.closePath();
-      ctx.fillStyle=tGr; ctx.fill();
+      rptSmooth(ctx,hourlyData,px,function(p){return pyT(p.avgT);});
+      ctx.lineTo(px(hourlyData[n-1]),MT+CH); ctx.lineTo(px(hourlyData[0]),MT+CH);
+      ctx.closePath(); ctx.fillStyle=tGr; ctx.fill();
+
+      // Dynamic dew point line (dashed green)
+      ctx.beginPath(); ctx.setLineDash([6,4]); ctx.strokeStyle='#3ecf8e'; ctx.lineWidth=1.5;
+      rptSmooth(ctx,hourlyData,px,function(p){return pyT(rptDewPt(p.avgT,p.avgH));});
+      ctx.stroke(); ctx.setLineDash([]);
 
       // Temperature line
       ctx.beginPath(); ctx.strokeStyle='#f0a54e'; ctx.lineWidth=2; ctx.lineJoin='round';
-      tV.forEach(function(v,i){ i?ctx.lineTo(px(i),pyT(v)):ctx.moveTo(px(i),pyT(v)); });
+      rptSmooth(ctx,hourlyData,px,function(p){return pyT(p.avgT);});
       ctx.stroke();
 
       // Humidity line
       ctx.beginPath(); ctx.strokeStyle='#5b8cff'; ctx.lineWidth=1.8; ctx.lineJoin='round';
-      hV.forEach(function(v,i){ i?ctx.lineTo(px(i),pyH(v)):ctx.moveTo(px(i),pyH(v)); });
+      rptSmooth(ctx,hourlyData,px,function(p){return pyH(p.avgH);});
       ctx.stroke();
 
-      // Marker helper — dot + pill label matching artifact
-      function mkr(xi,y,lbl,col,isHi){
-        var x=px(xi);
+      // Marker pills
+      function mkr(pt,y,lbl,col,isHi){
+        var x=px(pt);
         var ty=isHi?Math.max(MT+7,y-20):Math.min(MT+CH-7,y+20);
-        // Connector
         ctx.beginPath(); ctx.setLineDash([2,2]); ctx.strokeStyle=col; ctx.lineWidth=1;
         ctx.moveTo(x,isHi?y-5:y+5); ctx.lineTo(x,isHi?ty+7:ty-7); ctx.stroke(); ctx.setLineDash([]);
-        // Dot
         ctx.beginPath(); ctx.arc(x,y,5,0,Math.PI*2); ctx.fillStyle=col; ctx.fill();
         ctx.strokeStyle='rgba(0,0,0,0.4)'; ctx.lineWidth=1; ctx.stroke();
-        // Pill
         ctx.font='bold 7.5px Arial,sans-serif';
         var lw=ctx.measureText(lbl).width+10;
         var lx2=Math.max(ML+lw/2+2,Math.min(ML+CW-lw/2-2,x));
         ctx.beginPath(); ctx.fillStyle=col; rptRRect(ctx,lx2-lw/2,ty-7,lw,14,4); ctx.fill();
         ctx.fillStyle='#0a0b0d'; ctx.textAlign='center'; ctx.fillText(lbl,lx2,ty+3);
       }
-      mkr(tHiI,pyT(tV[tHiI]),'▲ '+tV[tHiI].toFixed(1)+'°C','#f0a54e',true);
-      mkr(tLoI,pyT(tV[tLoI]),'▼ '+tV[tLoI].toFixed(1)+'°C','#60a5fa',false);
-      mkr(hHiI,pyH(hV[hHiI]),'▲ '+Math.round(hV[hHiI])+'%','#38bdf8',true);
-      mkr(hLoI,pyH(hV[hLoI]),'▼ '+Math.round(hV[hLoI])+'%','#818cf8',false);
+      mkr(hourlyData[tHiI],pyT(tV[tHiI]),'▲ '+tV[tHiI].toFixed(1)+'°C','#f0a54e',true);
+      mkr(hourlyData[tLoI],pyT(tV[tLoI]),'▼ '+tV[tLoI].toFixed(1)+'°C','#60a5fa',false);
+      mkr(hourlyData[hHiI],pyH(hV[hHiI]),'▲ '+Math.round(hV[hHiI])+'%','#38bdf8',true);
+      mkr(hourlyData[hLoI],pyH(hV[hLoI]),'▼ '+Math.round(hV[hLoI])+'%','#818cf8',false);
 
-      // Bottom legend — matching artifact style
+      // Bottom legend
       var legY=MT+CH+27, legX=ML;
       function legLine(label,col,dash){
         ctx.beginPath(); ctx.strokeStyle=col; ctx.lineWidth=2;
         if(dash) ctx.setLineDash([5,3]); else ctx.setLineDash([]);
         ctx.moveTo(legX,legY); ctx.lineTo(legX+16,legY); ctx.stroke(); ctx.setLineDash([]);
         ctx.fillStyle='#9ca3af'; ctx.font='8.5px Arial,sans-serif'; ctx.textAlign='left';
-        ctx.fillText(label,legX+20,legY+3.5);
-        legX+=ctx.measureText(label).width+36;
+        ctx.fillText(label,legX+20,legY+3.5); legX+=ctx.measureText(label).width+36;
       }
       legLine('Temperature','#f0a54e',false);
       legLine('Humidity','#5b8cff',false);
@@ -3863,14 +3856,13 @@
         });
         rptSetProg(25,'Rendering temperature overview…');
         var images={};
-        images.chartTemp=rptChart(560,200,function(ctx,W,H){ rptDrawOverview(ctx,W,H,hourlyByDev,devOrder,devColors,'avgT'); });
+        images.chartTemp=rptChart(560,210,function(ctx,W,H){ rptDrawOverview(ctx,W,H,hourlyByDev,devOrder,devColors,'avgT',fromMs); });
         rptSetProg(38,'Rendering humidity overview…');
-        images.chartHum=rptChart(560,200,function(ctx,W,H){ rptDrawOverview(ctx,W,H,hourlyByDev,devOrder,devColors,'avgH'); });
+        images.chartHum=rptChart(560,210,function(ctx,W,H){ rptDrawOverview(ctx,W,H,hourlyByDev,devOrder,devColors,'avgH',fromMs); });
         devOrder.forEach(function(dev,i){
           rptSetProg(48+i*12,'Rendering chart for '+dev+'…');
           var hourly=hourlyByDev[dev]; if(!hourly||!hourly.length) return;
-          var s=statsMap[dev];
-          images['dev'+i]=rptChart(300,205,function(ctx,W,H){ rptDrawDevice(ctx,W,H,hourly,s?s.dAvg:20); });
+          images['dev'+i]=(function(h,fMs){ return rptChart(300,210,function(ctx,W,H){ rptDrawDevice(ctx,W,H,h,fMs); }); })(hourly,fromMs);
         });
         rptSetProg(88,'Building email…');
         var cidMap={chartTemp:'chartTemp',chartHum:'chartHum'};
