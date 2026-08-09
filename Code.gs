@@ -77,6 +77,13 @@ function doPost(e) {
 
   try {
     var body = JSON.parse(e.postData.contents);
+
+    // Browser-generated report — route before sensor auth
+    if (body.type === 'sendReport') {
+      out.setContent(JSON.stringify(handleBrowserReport_(body)));
+      return out;
+    }
+
     var device    = String(body.device    || '').trim();
     var location  = String(body.location  || '').trim();
     var sampleSec = parseInt(body.sampleSec) || (parseInt(body.sampleMin) * 60) || 300;
@@ -993,6 +1000,29 @@ function sendWeeklyReport_(recipients) {
 // Run this from the Apps Script editor to send an immediate demo report
 function sendDemoReport() {
   sendWeeklyReport_('Thejthimmaiah04@gmail.com');
+}
+
+// Handle a browser-rendered report POST: decode base64 JPEG images, send email
+function handleBrowserReport_(body) {
+  try {
+    var to      = String(body.to      || '').trim();
+    var subject = String(body.subject || 'DEWVEE Weekly Climate Report').trim();
+    var html    = String(body.htmlBody || '');
+    var images  = body.images || {};
+    if (!to)   return {ok: false, error: 'missing recipient'};
+    if (!html) return {ok: false, error: 'missing htmlBody'};
+
+    var inlineImages = {};
+    Object.keys(images).forEach(function(key) {
+      var decoded = Utilities.base64Decode(images[key]);
+      inlineImages[key] = Utilities.newBlob(decoded, 'image/jpeg', key + '.jpg');
+    });
+
+    MailApp.sendEmail({to: to, subject: subject, htmlBody: html, inlineImages: inlineImages});
+    return {ok: true};
+  } catch(e) {
+    return {ok: false, error: e.message};
+  }
 }
 
 // ================================================================
