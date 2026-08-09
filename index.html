@@ -3668,11 +3668,13 @@
     }
 
     function rptChart(W,H,drawFn){
-      var cv=document.createElement('canvas'); cv.width=W; cv.height=H;
+      var S=2; // 2x for crisp retina rendering
+      var cv=document.createElement('canvas'); cv.width=W*S; cv.height=H*S;
       var ctx=cv.getContext('2d');
+      ctx.scale(S,S);
       ctx.fillStyle='#0f1117'; ctx.fillRect(0,0,W,H);
       drawFn(ctx,W,H);
-      return cv.toDataURL('image/jpeg',0.90).replace(/^data:image\/jpeg;base64,/,'');
+      return cv.toDataURL('image/jpeg',0.93).replace(/^data:image\/jpeg;base64,/,'');
     }
 
     function rptDevSummary(s){
@@ -3797,7 +3799,7 @@
         // Battery box
         h+='<td><div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:7px;padding:7px 8px;">'
           +'<div style="font-size:8px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px;">Battery</div>'
-          +'<div style="font-size:18px;font-weight:700;color:'+(bc)+'line-height:1;">'+(bp!=null?bp+'%':'N/A')+'</div>'
+          +'<div style="font-size:18px;font-weight:700;color:'+(bc)+';line-height:1;">'+(bp!=null?bp+'%':'N/A')+'</div>'
           +(bp!=null?'<table width="100%" cellpadding="0" cellspacing="0" style="margin-top:4px;"><tr>'
             +'<td width="'+bp+'%" style="height:3px;background:'+bc+';border-radius:2px 0 0 2px;font-size:0;">&nbsp;</td>'
             +'<td style="height:3px;background:rgba(255,255,255,.1);border-radius:0 2px 2px 0;font-size:0;">&nbsp;</td>'
