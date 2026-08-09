@@ -1,5 +1,5 @@
 // DEWVEE Service Worker — network-first for API, cache-first for shell
-const CACHE = 'dewvee-v18';
+const CACHE = 'dewvee-v19';
 const SHELL = ['./index.html', './manifest.json', './dewvee-icon.svg', './dewvee-logo.svg'];
 
 self.addEventListener('install', function(e) {
