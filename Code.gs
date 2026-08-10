@@ -1005,10 +1005,11 @@ function sendDemoReport() {
 // Handle a browser-rendered report POST: decode base64 JPEG images, send email
 function handleBrowserReport_(body) {
   try {
-    var to      = String(body.to      || '').trim();
-    var subject = String(body.subject || 'DEWVEE Weekly Climate Report').trim();
-    var html    = String(body.htmlBody || '');
-    var images  = body.images || {};
+    var to       = String(body.to      || '').trim();
+    var subject  = String(body.subject || 'DEWVEE Weekly Climate Report').trim();
+    var html     = String(body.htmlBody || '');
+    var images   = body.images   || {};
+    var csvFiles = body.csvFiles || {};
     if (!to)   return {ok: false, error: 'missing recipient'};
     if (!html) return {ok: false, error: 'missing htmlBody'};
 
@@ -1018,7 +1019,14 @@ function handleBrowserReport_(body) {
       inlineImages[key] = Utilities.newBlob(decoded, 'image/jpeg', key + '.jpg');
     });
 
-    MailApp.sendEmail({to: to, subject: subject, htmlBody: html, inlineImages: inlineImages});
+    var attachments = [];
+    Object.keys(csvFiles).forEach(function(fname) {
+      var decoded = Utilities.base64Decode(csvFiles[fname]);
+      attachments.push(Utilities.newBlob(decoded, 'text/csv', fname));
+    });
+
+    MailApp.sendEmail({to: to, subject: subject, htmlBody: html,
+                       inlineImages: inlineImages, attachments: attachments});
     return {ok: true};
   } catch(e) {
     return {ok: false, error: e.message};

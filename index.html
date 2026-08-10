@@ -3756,6 +3756,29 @@
       });
     }
 
+    // Build a CSV string for one device from raw series points
+    function rptBuildCSV(dev, pts, fromMs) {
+      var MN=['January','February','March','April','May','June','July',
+              'August','September','October','November','December'];
+      var rows=['Date,Time (UTC),Temperature (°C),Humidity (%),Dew Point (°C),Battery (%),Voltage (V)'];
+      var sorted=pts.slice().sort(function(a,b){return a.t-b.t;});
+      sorted.forEach(function(r){
+        var abs=fromMs+r.t, d=new Date(abs);
+        var date=d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0');
+        var time=String(d.getUTCHours()).padStart(2,'0')+':'+String(d.getUTCMinutes()).padStart(2,'0');
+        var dp=(r.temp>0&&r.hum>0)?rptDewPt(r.temp,r.hum):'';
+        rows.push([date,time,r.temp||'',r.hum||'',dp,r.pct||'',r.v||''].join(','));
+      });
+      return rows.join('\r\n');
+    }
+
+    function rptCSVFilename(dev) {
+      var MN=['January','February','March','April','May','June','July',
+              'August','September','October','November','December'];
+      var now=new Date();
+      return dev+'_'+MN[now.getMonth()]+'_'+now.getFullYear()+'.csv';
+    }
+
     function rptChart(W,H,drawFn){
       var S=2; // 2x for crisp retina rendering
       var cv=document.createElement('canvas'); cv.width=W*S; cv.height=H*S;
@@ -3977,15 +4000,23 @@
           var hourly=hourlyByDev[dev]; if(!hourly||!hourly.length) return;
           images['dev'+i]=(function(h,fMs,pMs){ return rptChart(300,210,function(ctx,W,H){ rptDrawDevice(ctx,W,H,h,fMs,pMs); }); })(hourly,fromMs,periodMs);
         });
-        rptSetProg(88,'Building email…');
+        rptSetProg(85,'Building CSV files…');
+        var csvFiles={};
+        devOrder.forEach(function(dev){
+          var pts=series[dev]; if(!pts||!pts.length) return;
+          var csvStr=rptBuildCSV(dev,pts,fromMs);
+          var fname=rptCSVFilename(dev);
+          csvFiles[fname]=btoa(unescape(encodeURIComponent(csvStr)));
+        });
+        rptSetProg(90,'Building email…');
         var cidMap={chartTemp:'chartTemp',chartHum:'chartHum',chartBatt:'chartBatt'};
         devOrder.forEach(function(d,i){ cidMap['dev'+i]='dev'+i; });
         var html=rptBuildHTML(statsMap,devOrder,devColors,cidMap,fromMs,rangeLabel);
         var subj='DEWVEE '+rangeLabel+' Climate Report — '+
           new Date(fromMs).toLocaleDateString('en-GB',{day:'numeric',month:'short',timeZone:'UTC'})+
           ' to '+new Date().toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'});
-        rptSetProg(94,'Sending…');
-        var payload=JSON.stringify({type:'sendReport',to:to.join(','),subject:subj,htmlBody:html,images:images});
+        rptSetProg(95,'Sending…');
+        var payload=JSON.stringify({type:'sendReport',to:to.join(','),subject:subj,htmlBody:html,images:images,csvFiles:csvFiles});
         var resp=await fetch(API_URL,{method:'POST',body:payload,redirect:'follow'});
         var result={}; try{ result=await resp.json(); }catch(e2){}
         if(result.ok){
